@@ -1,0 +1,176 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust-tests:
+    name: Rust Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+        override: true
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          rust/target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+    
+    - name: Rust Format Check
+      run: cd rust && cargo fmt --all -- --check
+    
+    - name: Rust Clippy
+      run: cd rust && cargo clippy --all-targets --all-features -- -D warnings
+    
+    - name: Rust Tests
+      run: cd rust && cargo test --all
+
+  python-tests:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        python-version: [3.9, 3.10, 3.11]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('py/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        cd py
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+    
+    - name: Python Format Check
+      run: |
+        cd py
+        black --check .
+        isort --check-only .
+    
+    - name: Python Lint
+      run: |
+        cd py
+        flake8 .
+        mypy .
+    
+    - name: Python Tests
+      run: |
+        cd py
+        pytest tests/ -v --cov=imp --cov-report=xml
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: py/coverage.xml
+        flags: python
+        name: python-coverage
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [rust-tests, python-tests]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.10
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+    
+    - name: Start services
+      run: |
+        docker-compose up -d minio redis
+        sleep 10
+    
+    - name: Wait for services
+      run: |
+        timeout 60 bash -c 'until curl -f http://localhost:9000/minio/health/live; do sleep 2; done'
+        timeout 60 bash -c 'until redis-cli -h localhost ping; do sleep 2; done'
+    
+    - name: Run integration tests
+      run: |
+        cd py
+        pip install -e ".[dev]"
+        pytest tests/integration/ -v -m integration
+    
+    - name: Cleanup
+      if: always()
+      run: docker-compose down -v
+
+  build-images:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [rust-tests, python-tests]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Build and push Rust image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./rust
+        file: ./rust/Dockerfile
+        push: true
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/imp-rust:latest
+          ${{ secrets.DOCKER_USERNAME }}/imp-rust:${{ github.sha }}
+    
+    - name: Build and push Python image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./py
+        file: ./py/Dockerfile
+        push: true
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/imp-python:latest
+          ${{ secrets.DOCKER_USERNAME }}/imp-python:${{ github.sha }}

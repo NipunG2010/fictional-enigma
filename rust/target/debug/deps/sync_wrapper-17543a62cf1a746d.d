@@ -1,0 +1,5 @@
+/home/nipung2010/IMP/rust/target/debug/deps/sync_wrapper-17543a62cf1a746d.d: /home/nipung2010/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sync_wrapper-0.1.2/src/lib.rs
+
+/home/nipung2010/IMP/rust/target/debug/deps/libsync_wrapper-17543a62cf1a746d.rmeta: /home/nipung2010/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sync_wrapper-0.1.2/src/lib.rs
+
+/home/nipung2010/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sync_wrapper-0.1.2/src/lib.rs:
