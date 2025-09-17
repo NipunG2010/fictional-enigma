@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 members = [
     "inference-engine",
     "feature-pipeline",
@@ -13,7 +14,7 @@ authors = ["IMP Team"]
 license = "MIT"
 repository = "https://github.com/your-org/IMP"
 
-resolver = "2"
+
 
 [workspace.dependencies]
 # Core dependencies
@@ -24,7 +25,19 @@ anyhow = "1.0"
 thiserror = "1.0"
 
 # Data processing
-polars = { version = "0.45", features = ["lazy", "temporal", "strings", "dtype-categorical"] }
+polars = { git = "https://github.com/pola-rs/polars", rev = "b8bfb07a", features = [
+    "lazy",
+    "parquet",
+    "csv",
+    "dtype-date",
+    "dtype-datetime",
+    "dtype-time",
+    "dtype-duration",
+    "rolling_window",
+    "cum_agg",
+    "ewma",
+    "temporal",
+] }
 arrow2 = "0.17"
 parquet = "0.17"
 
