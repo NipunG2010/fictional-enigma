@@ -2,7 +2,7 @@
 
 ## Overview
 
-This plan implements a production-ready hybrid trading system using Rust/Polars for high-throughput feature pipelines & inference and Python for research, model training, and HMM-based regime detection. The system generates trading signals through LDC (k-NN), MR (Mean Reversion), TSMOM (Time Series Momentum), and HMM-based fusion.
+This plan implements a production-ready hybrid trading system using Rust/Polars for high-throughput feature pipelines & inference and Python for research, model training, and HMM-based regime detection. The system generates trading signals through LDC (Lorentzian Classification Engine), MR (Mean Reversion), TSMOM (Time Series Momentum), and HMM-based fusion.
 
 ## Architecture Summary
 
@@ -90,7 +90,7 @@ The system consists of:
 ### Phase 2: LDC Engine Implementation (Weeks 4-6)
 
 #### Objectives
-- Implement LDC (Labeled Data Classification) using k-NN
+- Implement LDC (Lorentzian Classification Engine) using k-NN
 - Build training data management system
 - Create inference engine for LDC signals
 

@@ -10,7 +10,7 @@ I’ll start with the top-level architecture diagram and then drill into compone
 +----------------------+        +----------------------+        +--------------------+
 |  Research & Train    | <----> |  Artifact Store      | <----> |  Rust Inference    |
 |  (Python notebooks)  |        |  (S3/MinIO + Parquet)|        |  Engine (Polars)   |
-|  - vectorbt, PyTorch |        |                      |        |  - LDC (k-NN)      |
+|  - vectorbt, PyTorch |        |                      |        |  - LDC (Lorentzian Classification Engine) |
 |  - hmmlearn/pomegranate |     |                      |        |  - MR, TSMOM       |
 +----------------------+        +----------------------+        +--------------------+
          |                                   ^                         |
@@ -48,7 +48,7 @@ Key ideas:
 
   * Raw OHLCV Parquet partitions (symbol/date/interval).
   * Feature Parquet (zscore, RSI, WT, CCI, ADX, mom, vol, etc.).
-  * Model artifacts: LDC training snapshot (feature vectors + labels) in flat binary, HNSW index file (if used), HMM params (JSON or joblib), and fusion weight sets (JSON).
+  * Model artifacts: LDC (Lorentzian Classification Engine) training snapshot (feature vectors + labels) in flat binary, HNSW index file (if used), HMM params (JSON or joblib), and fusion weight sets (JSON).
 
 ## 2) Research & Model Training (Python)
 
@@ -72,12 +72,12 @@ Key ideas:
 
 ## 4) Feature Pipeline & Inference Engine (Rust)
 
-* **Stack**: Rust service using `polars` (lazy API) for columnar, multithreaded feature building; custom LDC k-NN implementation (fast Rust), optional ANN via `hnsw_rs` for large training sets. ([Docs.rs][1])
+* **Stack**: Rust service using `polars` (lazy API) for columnar, multithreaded feature building; custom LDC (Lorentzian Classification Engine) k-NN implementation (fast Rust), optional ANN via `hnsw_rs` for large training sets. ([Docs.rs][1])
 * **Responsibilities**:
 
   * Read Parquet or Arrow IPC from Artifact Store.
   * Build/maintain rolling feature windows per symbol (RSI, WaveTrend, CCI, ADX, MA, std, zscore, TSMOM, etc.) using Polars lazy expressions. ([docs.pola.rs][5])
-  * Maintain ring-buffer of labeled feature vectors for LDC; expose k-NN query engine with Lorentzian distance (optimized, multithreaded).
+  * Maintain ring-buffer of labeled feature vectors for LDC (Lorentzian Classification Engine); expose k-NN query engine with Lorentzian distance (optimized, multithreaded).
   * Provide MR and TSMOM scorers (pure, deterministic, Rust-native).
   * Optionally hold an in-memory HNSW index (from `hnsw_rs`) for fast ANN queries if N\_train large. ([Crates.io][6], [GitHub][7])
 * **APIs**:
