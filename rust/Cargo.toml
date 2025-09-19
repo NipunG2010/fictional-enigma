@@ -25,7 +25,7 @@ anyhow = "1.0"
 thiserror = "1.0"
 
 # Data processing
-polars = { git = "https://github.com/pola-rs/polars", rev = "b8bfb07a", features = [
+polars = {version = "0.51", features = [
     "lazy",
     "parquet",
     "csv",
@@ -37,6 +37,8 @@ polars = { git = "https://github.com/pola-rs/polars", rev = "b8bfb07a", features
     "cum_agg",
     "ewma",
     "temporal",
+    "polars-ops",
+    "abs"
 ] }
 arrow2 = "0.17"
 parquet = "0.17"

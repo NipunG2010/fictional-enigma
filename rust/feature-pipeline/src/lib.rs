@@ -23,6 +23,10 @@ pub struct Features {
     pub std_20: Option<f64>,
     pub zscore_20: Option<f64>,
     pub momentum: Option<f64>,
+    pub wavetrend_1: Option<f64>,
+    pub wavetrend_2: Option<f64>,
+    pub cci: Option<f64>,
+    pub adx: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +113,13 @@ impl FeaturePipeline {
                 self.compute_zscore_expr(),
                 // Momentum
                 self.compute_momentum_expr(),
+                // Wavetrend WT1, WT2
+                self.compute_wavetrend1_expr(),
+                self.compute_wavetrend2_expr(),
+                // CCI
+                self.compute_cci_expr(),
+                // ADX
+                self.compute_adx_expr(),
             ])
             .collect()?;
 
@@ -134,6 +145,10 @@ impl FeaturePipeline {
             let std_20 = row.0[9].extract::<f64>();
             let zscore_20 = row.0[10].extract::<f64>();
             let momentum = row.0[11].extract::<f64>();
+            let wavetrend_1 = if row.0.len() > 12 { row.0[12].extract::<f64>() } else { None };
+            let wavetrend_2 = if row.0.len() > 13 { row.0[13].extract::<f64>() } else { None };
+            let cci = if row.0.len() > 14 { row.0[14].extract::<f64>() } else { None };
+            let adx = if row.0.len() > 15 { row.0[15].extract::<f64>() } else { None };
 
             features.push(Features {
                 timestamp,
@@ -143,6 +158,10 @@ impl FeaturePipeline {
                 std_20,
                 zscore_20,
                 momentum,
+                wavetrend_1,
+                wavetrend_2,
+                cci,
+                adx,
             });
         }
 
@@ -213,6 +232,99 @@ impl FeaturePipeline {
         let prev_close = col("close").shift(lit(1));
         ((col("close") - prev_close.clone()) / prev_close).alias("momentum")
     }
+
+    // Typical price helper: (high+low+close)/3
+    fn compute_typical_price_expr(&self) -> Expr {
+        (col("high") + col("low") + col("close")) / lit(3.0)
+    }
+
+    // Wavetrend WT1
+    fn compute_wavetrend1_expr(&self) -> Expr {
+        // Parameters often n1=10, n2=21; we reuse ma_period for n1 and rsi_period for n2 by default
+        let n1_alpha = 2.0 / (self.ma_period as f64 + 1.0);
+        let n2_alpha = 2.0 / (self.rsi_period as f64 + 1.0);
+        let tp = self.compute_typical_price_expr();
+        let esa = tp.clone().ewm_mean(EWMOptions { alpha: n1_alpha, adjust: false, min_periods: 1, ..Default::default() });
+        let d = (tp.clone() - esa.clone()).abs().ewm_mean(EWMOptions {
+            alpha: n1_alpha,
+            adjust: false,
+            min_periods: 0,
+            bias: false,
+            ignore_nulls: false,
+        });
+        let ci = (tp - esa) / (lit(0.015) * d);
+        ci.ewm_mean(EWMOptions { alpha: n2_alpha, adjust: false, min_periods: 1, ..Default::default() }).alias("wavetrend_1")
+    }
+
+    // Wavetrend WT2 (signal) - compute directly from the same logic as WT1
+    fn compute_wavetrend2_expr(&self) -> Expr {
+        let n1_alpha = 2.0 / (self.ma_period as f64 + 1.0);
+        let n2_alpha = 2.0 / (self.rsi_period as f64 + 1.0);
+        let tp = self.compute_typical_price_expr();
+        let esa = tp.clone().ewm_mean(EWMOptions { alpha: n1_alpha, adjust: false, min_periods: 1, ..Default::default() });
+        let d = (tp.clone() - esa.clone()).abs().ewm_mean(EWMOptions {
+            alpha: n1_alpha,
+            adjust: false,
+            min_periods: 0,
+            bias: false,
+            ignore_nulls: false,
+        });
+        let ci = (tp - esa) / (lit(0.015) * d);
+        let wt1 = ci.ewm_mean(EWMOptions { alpha: n2_alpha, adjust: false, min_periods: 1, ..Default::default() });
+        wt1.ewm_mean(EWMOptions { alpha: 2.0 / (4.0 + 1.0), adjust: false, min_periods: 1, ..Default::default() }).alias("wavetrend_2")
+    }
+
+    // CCI
+    fn compute_cci_expr(&self) -> Expr {
+        let options = RollingOptionsFixedWindow {
+            window_size: self.ma_period,
+            ..Default::default()
+        };
+        let tp = self.compute_typical_price_expr();
+        let tp_ma = tp.clone().rolling_mean(options.clone());
+        let mad = (tp.clone() - tp_ma.clone()).abs().rolling_mean(options);
+        ((tp - tp_ma) / (lit(0.015) * mad)).alias("cci")
+    }
+
+    // ADX (approximate smoothing with EWM)
+    fn compute_adx_expr(&self) -> Expr {
+        let prev_high = col("high").shift(lit(1));
+        let prev_low = col("low").shift(lit(1));
+        let prev_close = col("close").shift(lit(1));
+
+        let tr1 = col("high") - col("low");
+        let tr2 = (col("high") - prev_close.clone()).abs();
+        let tr3 = (col("low") - prev_close.clone()).abs();
+        let tr = when(tr1.clone().gt(tr2.clone()))
+            .then(when(tr1.clone().gt(tr3.clone()))
+                .then(tr1)
+                .otherwise(tr3.clone()))
+            .otherwise(when(tr2.clone().gt(tr3.clone()))
+                .then(tr2)
+                .otherwise(tr3));
+
+        let up_move = col("high") - prev_high.clone();
+        let down_move = prev_low.clone() - col("low");
+        let plus_dm = when((up_move.clone().gt(lit(0.0)))
+            .and(up_move.clone().gt(down_move.clone())))
+            .then(up_move.clone())
+            .otherwise(lit(0.0));
+        let minus_dm = when((down_move.clone().gt(lit(0.0)))
+            .and(down_move.clone().gt(up_move.clone())))
+            .then(down_move.clone())
+            .otherwise(lit(0.0));
+
+        let alpha = 2.0 / (self.ma_period as f64 + 1.0);
+        let tr_s = tr.ewm_mean(EWMOptions { alpha, adjust: false, min_periods: 1, ..Default::default() });
+        let plus_dm_s = plus_dm.ewm_mean(EWMOptions { alpha, adjust: false, min_periods: 1, ..Default::default() });
+        let minus_dm_s = minus_dm.ewm_mean(EWMOptions { alpha, adjust: false, min_periods: 1, ..Default::default() });
+
+        let di_plus = lit(100.0) * (plus_dm_s.clone() / tr_s.clone());
+        let di_minus = lit(100.0) * (minus_dm_s.clone() / tr_s);
+        let dx = lit(100.0) * (di_plus.clone() - di_minus.clone()).abs() / (di_plus + di_minus);
+        dx.ewm_mean(EWMOptions { alpha, adjust: false, min_periods: 1, ..Default::default() }).alias("adx")
+    }
+
     /// Generate Mean Reversion signal
     pub fn generate_mr_signal(&self, features: &[Features]) -> Result<Vec<Signals>> {
         let mut signals = Vec::new();
@@ -359,7 +471,7 @@ mod tests {
         
         // Check that we have some valid features after the window period
         let valid_features: Vec<_> = features.iter()
-            .filter(|f| f.rsi.is_some() || f.sma_20.is_some())
+            .filter(|f| f.rsi.is_some() || f.sma_20.is_some() || f.wavetrend_1.is_some() || f.cci.is_some() || f.adx.is_some())
             .collect();
         
         // Should have valid features for most data points after the initial window
