@@ -2,7 +2,9 @@ use anyhow::Result;
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 use polars::prelude::{RollingOptionsFixedWindow, EWMOptions};
-use std::fs::File;
+use std::fs::{File, create_dir_all};
+use std::path::{Path, PathBuf};
+use chrono::Utc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OHLCV {
@@ -409,6 +411,111 @@ impl FeaturePipeline {
             }
         }
     }
+
+    /// Create partitioned directory structure for data storage
+    pub fn create_partitioned_path(&self, base_path: &str, symbol: &str, interval: &str) -> Result<PathBuf> {
+        let now = Utc::now();
+        let date_str = now.format("%Y-%m-%d").to_string();
+        
+        let partition_path = Path::new(base_path)
+            .join(format!("symbol={}", symbol))
+            .join(format!("date={}", date_str))
+            .join(format!("interval={}", interval));
+        
+        create_dir_all(&partition_path)?;
+        Ok(partition_path)
+    }
+
+    /// Save OHLCV data to partitioned Parquet storage
+    pub fn save_ohlcv_partitioned(&self, data: &[OHLCV], base_path: &str, symbol: &str, interval: &str) -> Result<String> {
+        let partition_path = self.create_partitioned_path(base_path, symbol, interval)?;
+        let file_path = partition_path.join("ohlcv.parquet");
+        
+        let df = self.ohlcv_to_dataframe(data)?;
+        let mut file = File::create(&file_path)?;
+        ParquetWriter::new(&mut file).finish(&mut df.clone())?;
+        
+        Ok(file_path.to_string_lossy().to_string())
+    }
+
+    /// Save features to partitioned Parquet storage
+    pub fn save_features_partitioned(&self, features: &[Features], base_path: &str, symbol: &str, interval: &str) -> Result<String> {
+        let partition_path = self.create_partitioned_path(base_path, symbol, interval)?;
+        let file_path = partition_path.join("features.parquet");
+        
+        // Convert features to DataFrame
+        let timestamps: Vec<i64> = features.iter().map(|f| f.timestamp).collect();
+        let rsi: Vec<Option<f64>> = features.iter().map(|f| f.rsi).collect();
+        let sma_20: Vec<Option<f64>> = features.iter().map(|f| f.sma_20).collect();
+        let ema_20: Vec<Option<f64>> = features.iter().map(|f| f.ema_20).collect();
+        let std_20: Vec<Option<f64>> = features.iter().map(|f| f.std_20).collect();
+        let zscore_20: Vec<Option<f64>> = features.iter().map(|f| f.zscore_20).collect();
+        let momentum: Vec<Option<f64>> = features.iter().map(|f| f.momentum).collect();
+        let wavetrend_1: Vec<Option<f64>> = features.iter().map(|f| f.wavetrend_1).collect();
+        let wavetrend_2: Vec<Option<f64>> = features.iter().map(|f| f.wavetrend_2).collect();
+        let cci: Vec<Option<f64>> = features.iter().map(|f| f.cci).collect();
+        let adx: Vec<Option<f64>> = features.iter().map(|f| f.adx).collect();
+
+        let df = df![
+            "timestamp" => timestamps,
+            "rsi" => rsi,
+            "sma_20" => sma_20,
+            "ema_20" => ema_20,
+            "std_20" => std_20,
+            "zscore_20" => zscore_20,
+            "momentum" => momentum,
+            "wavetrend_1" => wavetrend_1,
+            "wavetrend_2" => wavetrend_2,
+            "cci" => cci,
+            "adx" => adx,
+        ]?;
+
+        let mut file = File::create(&file_path)?;
+        ParquetWriter::new(&mut file).finish(&mut df.clone())?;
+        
+        Ok(file_path.to_string_lossy().to_string())
+    }
+
+    /// Save signals to partitioned Parquet storage
+    pub fn save_signals_partitioned(&self, signals: &[Signals], base_path: &str, symbol: &str, interval: &str) -> Result<String> {
+        let partition_path = self.create_partitioned_path(base_path, symbol, interval)?;
+        let file_path = partition_path.join("signals.parquet");
+        
+        // Convert signals to DataFrame
+        let timestamps: Vec<i64> = signals.iter().map(|s| s.timestamp).collect();
+        let s_mr: Vec<Option<f64>> = signals.iter().map(|s| s.s_mr).collect();
+        let s_tsmom: Vec<Option<f64>> = signals.iter().map(|s| s.s_tsmom).collect();
+
+        let df = df![
+            "timestamp" => timestamps,
+            "s_mr" => s_mr,
+            "s_tsmom" => s_tsmom,
+        ]?;
+
+        let mut file = File::create(&file_path)?;
+        ParquetWriter::new(&mut file).finish(&mut df.clone())?;
+        
+        Ok(file_path.to_string_lossy().to_string())
+    }
+
+    /// Process and save all data with partitioning
+    pub fn process_and_save_partitioned(&self, data: &[OHLCV], base_path: &str, symbol: &str, interval: &str) -> Result<(String, String, String)> {
+        // Compute features
+        let features = self.compute_features(data)?;
+        
+        // Generate signals
+        let mut signals = self.generate_signals(&features)?;
+        
+        // Apply filtering
+        self.apply_signal_filtering(&mut signals, 0.1, 0.01);
+        
+        // Save all data with partitioning
+        let ohlcv_path = self.save_ohlcv_partitioned(data, base_path, symbol, interval)?;
+        let features_path = self.save_features_partitioned(&features, base_path, symbol, interval)?;
+        let signals_path = self.save_signals_partitioned(&signals, base_path, symbol, interval)?;
+        
+        Ok((ohlcv_path, features_path, signals_path))
+    }
 }
 
 #[cfg(test)]
@@ -537,5 +644,63 @@ mod tests {
         
         let features = pipeline.compute_features(&data).unwrap();
         assert_eq!(features.len(), 0); // Should return empty because window_size is 20
+    }
+    
+    #[test]
+    fn test_partitioned_storage() {
+        let pipeline = FeaturePipeline::new(20);
+        let data = create_sample_data();
+        
+        // Test partitioned path creation
+        let partition_path = pipeline.create_partitioned_path("test_data", "BTCUSDT", "5m").unwrap();
+        assert!(partition_path.to_string_lossy().contains("symbol=BTCUSDT"));
+        assert!(partition_path.to_string_lossy().contains("interval=5m"));
+        assert!(partition_path.to_string_lossy().contains("date="));
+        
+        // Test saving OHLCV data
+        let ohlcv_path = pipeline.save_ohlcv_partitioned(&data, "test_data", "BTCUSDT", "5m").unwrap();
+        assert!(ohlcv_path.contains("ohlcv.parquet"));
+        assert!(std::path::Path::new(&ohlcv_path).exists());
+        
+        // Test saving features
+        let features = pipeline.compute_features(&data).unwrap();
+        let features_path = pipeline.save_features_partitioned(&features, "test_data", "BTCUSDT", "5m").unwrap();
+        assert!(features_path.contains("features.parquet"));
+        assert!(std::path::Path::new(&features_path).exists());
+        
+        // Test saving signals
+        let signals = pipeline.generate_signals(&features).unwrap();
+        let signals_path = pipeline.save_signals_partitioned(&signals, "test_data", "BTCUSDT", "5m").unwrap();
+        assert!(signals_path.contains("signals.parquet"));
+        assert!(std::path::Path::new(&signals_path).exists());
+        
+        // Clean up test files
+        let _ = std::fs::remove_dir_all("test_data");
+    }
+    
+    #[test]
+    fn test_process_and_save_partitioned() {
+        let pipeline = FeaturePipeline::new(20);
+        let data = create_sample_data();
+        
+        let (ohlcv_path, features_path, signals_path) = pipeline.process_and_save_partitioned(
+            &data, 
+            "test_data_full", 
+            "ETHUSDT", 
+            "1m"
+        ).unwrap();
+        
+        // Verify all files were created
+        assert!(std::path::Path::new(&ohlcv_path).exists());
+        assert!(std::path::Path::new(&features_path).exists());
+        assert!(std::path::Path::new(&signals_path).exists());
+        
+        // Verify paths contain correct partitioning
+        assert!(ohlcv_path.contains("symbol=ETHUSDT"));
+        assert!(features_path.contains("symbol=ETHUSDT"));
+        assert!(signals_path.contains("symbol=ETHUSDT"));
+        
+        // Clean up test files
+        let _ = std::fs::remove_dir_all("test_data_full");
     }
 }
