@@ -1,0 +1,1 @@
+AHH GOOD ONE!!nowjust make an example test file running that runns the whole thing start to end. and returns the whole parquet at last with all the signal generated(which can be tested).this would test it from start to end. from feautre pipeline to ldc engine

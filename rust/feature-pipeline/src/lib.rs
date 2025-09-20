@@ -250,11 +250,14 @@ impl FeaturePipeline {
         let d = (tp.clone() - esa.clone()).abs().ewm_mean(EWMOptions {
             alpha: n1_alpha,
             adjust: false,
-            min_periods: 0,
+            min_periods: 1, // Changed from 0 to 1 to avoid division by zero
             bias: false,
             ignore_nulls: false,
         });
-        let ci = (tp - esa) / (lit(0.015) * d);
+        // Add small epsilon to prevent division by zero
+        let ci = when(d.clone().gt(lit(1e-8)))
+            .then((tp - esa) / (lit(0.015) * d))
+            .otherwise(lit(0.0));
         ci.ewm_mean(EWMOptions { alpha: n2_alpha, adjust: false, min_periods: 1, ..Default::default() }).alias("wavetrend_1")
     }
 
@@ -267,11 +270,13 @@ impl FeaturePipeline {
         let d = (tp.clone() - esa.clone()).abs().ewm_mean(EWMOptions {
             alpha: n1_alpha,
             adjust: false,
-            min_periods: 0,
+            min_periods: 1, // Changed from 0 to 1 to avoid division by zero
             bias: false,
             ignore_nulls: false,
         });
-        let ci = (tp - esa) / (lit(0.015) * d);
+        let ci = when(d.clone().gt(lit(1e-8)))
+            .then((tp - esa) / (lit(0.015) * d))
+            .otherwise(lit(0.0));
         let wt1 = ci.ewm_mean(EWMOptions { alpha: n2_alpha, adjust: false, min_periods: 1, ..Default::default() });
         wt1.ewm_mean(EWMOptions { alpha: 2.0 / (4.0 + 1.0), adjust: false, min_periods: 1, ..Default::default() }).alias("wavetrend_2")
     }
@@ -285,7 +290,11 @@ impl FeaturePipeline {
         let tp = self.compute_typical_price_expr();
         let tp_ma = tp.clone().rolling_mean(options.clone());
         let mad = (tp.clone() - tp_ma.clone()).abs().rolling_mean(options);
-        ((tp - tp_ma) / (lit(0.015) * mad)).alias("cci")
+        // Add small epsilon to prevent division by zero
+        when(mad.clone().gt(lit(1e-8)))
+            .then((tp - tp_ma) / (lit(0.015) * mad))
+            .otherwise(lit(0.0))
+            .alias("cci")
     }
 
     // ADX (approximate smoothing with EWM)
@@ -321,9 +330,15 @@ impl FeaturePipeline {
         let plus_dm_s = plus_dm.ewm_mean(EWMOptions { alpha, adjust: false, min_periods: 1, ..Default::default() });
         let minus_dm_s = minus_dm.ewm_mean(EWMOptions { alpha, adjust: false, min_periods: 1, ..Default::default() });
 
-        let di_plus = lit(100.0) * (plus_dm_s.clone() / tr_s.clone());
-        let di_minus = lit(100.0) * (minus_dm_s.clone() / tr_s);
-        let dx = lit(100.0) * (di_plus.clone() - di_minus.clone()).abs() / (di_plus + di_minus);
+        let di_plus = lit(100.0) * when(tr_s.clone().gt(lit(1e-8)))
+            .then(plus_dm_s.clone() / tr_s.clone())
+            .otherwise(lit(0.0));
+        let di_minus = lit(100.0) * when(tr_s.clone().gt(lit(1e-8)))
+            .then(minus_dm_s.clone() / tr_s)
+            .otherwise(lit(0.0));
+        let dx = lit(100.0) * when((di_plus.clone() + di_minus.clone()).gt(lit(1e-8)))
+            .then((di_plus.clone() - di_minus.clone()).abs() / (di_plus + di_minus))
+            .otherwise(lit(0.0));
         dx.ewm_mean(EWMOptions { alpha, adjust: false, min_periods: 1, ..Default::default() }).alias("adx")
     }
 

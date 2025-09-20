@@ -15,3 +15,10 @@ thiserror.workspace = true
 ndarray.workspace = true
 rayon.workspace = true
 ahash.workspace = true
+
+# Local dependencies
+feature-pipeline = { path = "../feature-pipeline" }
+
+# Additional dependencies for examples
+polars = { version = "0.40", features = ["lazy", "parquet", "temporal"] }
+rand = "0.8"
