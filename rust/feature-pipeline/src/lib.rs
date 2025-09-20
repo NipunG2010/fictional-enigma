@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, Context};
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 use polars::prelude::{RollingOptionsFixedWindow, EWMOptions};
@@ -500,8 +500,14 @@ impl FeaturePipeline {
 
     /// Process and save all data with partitioning
     pub fn process_and_save_partitioned(&self, data: &[OHLCV], base_path: &str, symbol: &str, interval: &str) -> Result<(String, String, String)> {
+        // Validate input data first
+        self.validate_ohlcv_data(data)?;
+        
         // Compute features
         let features = self.compute_features(data)?;
+        
+        // Validate computed features
+        self.validate_features(&features)?;
         
         // Generate signals
         let mut signals = self.generate_signals(&features)?;
@@ -515,6 +521,169 @@ impl FeaturePipeline {
         let signals_path = self.save_signals_partitioned(&signals, base_path, symbol, interval)?;
         
         Ok((ohlcv_path, features_path, signals_path))
+    }
+
+    /// Validate OHLCV data for consistency and quality
+    pub fn validate_ohlcv_data(&self, data: &[OHLCV]) -> Result<()> {
+        if data.is_empty() {
+            return Err(anyhow::anyhow!("OHLCV data is empty"));
+        }
+
+        for (i, ohlcv) in data.iter().enumerate() {
+            // Validate timestamp
+            if ohlcv.timestamp <= 0 {
+                return Err(anyhow::anyhow!("Invalid timestamp at index {}: {}", i, ohlcv.timestamp));
+            }
+
+            // Validate price data
+            if ohlcv.open <= 0.0 || ohlcv.high <= 0.0 || ohlcv.low <= 0.0 || ohlcv.close <= 0.0 {
+                return Err(anyhow::anyhow!("Invalid price data at index {}: prices must be positive", i));
+            }
+
+            // Validate OHLC relationships
+            if ohlcv.high < ohlcv.low {
+                return Err(anyhow::anyhow!("Invalid OHLC data at index {}: high ({}) < low ({})", i, ohlcv.high, ohlcv.low));
+            }
+
+            if ohlcv.high < ohlcv.open || ohlcv.high < ohlcv.close {
+                return Err(anyhow::anyhow!("Invalid OHLC data at index {}: high ({}) is not the highest price", i, ohlcv.high));
+            }
+
+            if ohlcv.low > ohlcv.open || ohlcv.low > ohlcv.close {
+                return Err(anyhow::anyhow!("Invalid OHLC data at index {}: low ({}) is not the lowest price", i, ohlcv.low));
+            }
+
+            // Validate volume
+            if ohlcv.volume < 0.0 {
+                return Err(anyhow::anyhow!("Invalid volume at index {}: volume ({}) cannot be negative", i, ohlcv.volume));
+            }
+
+            // Check for reasonable price ranges (prevent extreme outliers)
+            let price_avg = (ohlcv.open + ohlcv.high + ohlcv.low + ohlcv.close) / 4.0;
+            if price_avg > 1_000_000.0 || price_avg < 0.0001 {
+                return Err(anyhow::anyhow!("Suspicious price range at index {}: average price {}", i, price_avg));
+            }
+        }
+
+        // Validate timestamp ordering
+        for i in 1..data.len() {
+            if data[i].timestamp <= data[i-1].timestamp {
+                return Err(anyhow::anyhow!("Non-increasing timestamps at indices {} and {}: {} <= {}", 
+                    i-1, i, data[i-1].timestamp, data[i].timestamp));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate computed features for reasonable ranges
+    pub fn validate_features(&self, features: &[Features]) -> Result<()> {
+        for (i, feature) in features.iter().enumerate() {
+            // Validate RSI range (0-100)
+            if let Some(rsi) = feature.rsi {
+                if rsi < 0.0 || rsi > 100.0 {
+                    return Err(anyhow::anyhow!("Invalid RSI at index {}: {} (must be 0-100)", i, rsi));
+                }
+            }
+
+            // Validate moving averages are positive
+            if let Some(sma) = feature.sma_20 {
+                if sma <= 0.0 {
+                    return Err(anyhow::anyhow!("Invalid SMA at index {}: {} (must be positive)", i, sma));
+                }
+            }
+
+            if let Some(ema) = feature.ema_20 {
+                if ema <= 0.0 {
+                    return Err(anyhow::anyhow!("Invalid EMA at index {}: {} (must be positive)", i, ema));
+                }
+            }
+
+            // Validate standard deviation is non-negative
+            if let Some(std) = feature.std_20 {
+                if std < 0.0 {
+                    return Err(anyhow::anyhow!("Invalid standard deviation at index {}: {} (must be non-negative)", i, std));
+                }
+            }
+
+            // Validate z-score is reasonable (not infinite or NaN)
+            if let Some(zscore) = feature.zscore_20 {
+                if zscore.is_infinite() || zscore.is_nan() {
+                    return Err(anyhow::anyhow!("Invalid z-score at index {}: {} (infinite or NaN)", i, zscore));
+                }
+                if zscore.abs() > 10.0 {
+                    return Err(anyhow::anyhow!("Extreme z-score at index {}: {} (abs value > 10)", i, zscore));
+                }
+            }
+
+            // Validate momentum is reasonable
+            if let Some(momentum) = feature.momentum {
+                if momentum.is_infinite() || momentum.is_nan() {
+                    return Err(anyhow::anyhow!("Invalid momentum at index {}: {} (infinite or NaN)", i, momentum));
+                }
+                if momentum.abs() > 1.0 {
+                    return Err(anyhow::anyhow!("Extreme momentum at index {}: {} (abs value > 1.0)", i, momentum));
+                }
+            }
+
+            // Validate Wavetrend values (allow NaN for early periods)
+            if let Some(wt1) = feature.wavetrend_1 {
+                if wt1.is_infinite() {
+                    return Err(anyhow::anyhow!("Invalid Wavetrend1 at index {}: {} (infinite)", i, wt1));
+                }
+                // Allow NaN for early periods where calculation might not be possible
+            }
+
+            if let Some(wt2) = feature.wavetrend_2 {
+                if wt2.is_infinite() {
+                    return Err(anyhow::anyhow!("Invalid Wavetrend2 at index {}: {} (infinite)", i, wt2));
+                }
+                // Allow NaN for early periods where calculation might not be possible
+            }
+
+            // Validate CCI is reasonable (allow NaN for early periods)
+            if let Some(cci) = feature.cci {
+                if cci.is_infinite() {
+                    return Err(anyhow::anyhow!("Invalid CCI at index {}: {} (infinite)", i, cci));
+                }
+                if !cci.is_nan() && cci.abs() > 1000.0 {
+                    return Err(anyhow::anyhow!("Extreme CCI at index {}: {} (abs value > 1000)", i, cci));
+                }
+            }
+
+            // Validate ADX range (0-100, allow NaN for early periods, allow small floating point errors)
+            if let Some(adx) = feature.adx {
+                if !adx.is_nan() && (adx < -0.001 || adx > 100.001) {
+                    return Err(anyhow::anyhow!("Invalid ADX at index {}: {} (must be 0-100)", i, adx));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Enhanced error handling for feature computation
+    pub fn compute_features_safe(&self, data: &[OHLCV]) -> Result<Vec<Features>> {
+        // Validate input data
+        self.validate_ohlcv_data(data)
+            .context("Failed to validate OHLCV data")?;
+
+        if data.len() < self.window_size {
+            return Err(anyhow::anyhow!(
+                "Insufficient data: {} samples, need at least {} for window size {}", 
+                data.len(), self.window_size, self.window_size
+            ));
+        }
+
+        // Compute features with error handling
+        let features = self.compute_features(data)
+            .context("Failed to compute features")?;
+
+        // Validate computed features
+        self.validate_features(&features)
+            .context("Failed to validate computed features")?;
+
+        Ok(features)
     }
 }
 
@@ -702,5 +871,82 @@ mod tests {
         
         // Clean up test files
         let _ = std::fs::remove_dir_all("test_data_full");
+    }
+    
+    #[test]
+    fn test_ohlcv_validation() {
+        let pipeline = FeaturePipeline::new(20);
+        
+        // Test valid data
+        let valid_data = create_sample_data();
+        assert!(pipeline.validate_ohlcv_data(&valid_data).is_ok());
+        
+        // Test empty data
+        let empty_data = vec![];
+        assert!(pipeline.validate_ohlcv_data(&empty_data).is_err());
+        
+        // Test invalid OHLC data
+        let mut invalid_data = create_sample_data();
+        invalid_data[0].high = invalid_data[0].low - 1.0; // high < low
+        assert!(pipeline.validate_ohlcv_data(&invalid_data).is_err());
+        
+        // Test negative prices
+        let mut invalid_data = create_sample_data();
+        invalid_data[0].open = -1.0;
+        assert!(pipeline.validate_ohlcv_data(&invalid_data).is_err());
+        
+        // Test negative volume
+        let mut invalid_data = create_sample_data();
+        invalid_data[0].volume = -1.0;
+        assert!(pipeline.validate_ohlcv_data(&invalid_data).is_err());
+        
+        // Test non-increasing timestamps
+        let mut invalid_data = create_sample_data();
+        invalid_data[1].timestamp = invalid_data[0].timestamp - 1;
+        assert!(pipeline.validate_ohlcv_data(&invalid_data).is_err());
+    }
+    
+    #[test]
+    fn test_feature_validation() {
+        let pipeline = FeaturePipeline::new(20);
+        let data = create_sample_data();
+        let features = pipeline.compute_features(&data).unwrap();
+        
+        // Valid features should pass
+        assert!(pipeline.validate_features(&features).is_ok());
+        
+        // Test invalid RSI
+        let mut invalid_features = features.clone();
+        invalid_features[0].rsi = Some(150.0); // RSI > 100
+        assert!(pipeline.validate_features(&invalid_features).is_err());
+        
+        // Test invalid SMA
+        let mut invalid_features = features.clone();
+        invalid_features[0].sma_20 = Some(-1.0); // Negative SMA
+        assert!(pipeline.validate_features(&invalid_features).is_err());
+        
+        // Test invalid z-score
+        let mut invalid_features = features.clone();
+        invalid_features[0].zscore_20 = Some(f64::INFINITY);
+        assert!(pipeline.validate_features(&invalid_features).is_err());
+    }
+    
+    #[test]
+    fn test_compute_features_safe() {
+        let pipeline = FeaturePipeline::new(20);
+        let data = create_sample_data();
+        
+        // Valid data should work
+        let features = pipeline.compute_features_safe(&data).unwrap();
+        assert!(!features.is_empty());
+        
+        // Insufficient data should fail
+        let insufficient_data = &data[..10]; // Only 10 samples, need 20
+        assert!(pipeline.compute_features_safe(insufficient_data).is_err());
+        
+        // Invalid data should fail
+        let mut invalid_data = data.clone();
+        invalid_data[0].high = invalid_data[0].low - 1.0;
+        assert!(pipeline.compute_features_safe(&invalid_data).is_err());
     }
 }
