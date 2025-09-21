@@ -22,3 +22,5 @@ feature-pipeline = { path = "../feature-pipeline" }
 # Additional dependencies for examples
 polars = { version = "0.40", features = ["lazy", "parquet", "temporal"] }
 rand = "0.8"
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1.0", features = ["full"] }

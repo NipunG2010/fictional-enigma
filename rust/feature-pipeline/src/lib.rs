@@ -179,12 +179,35 @@ impl FeaturePipeline {
 
         let gains = when(price_change.clone().gt(lit(0.0))).then(price_change.clone()).otherwise(lit(0.0));
         let losses = when(price_change.clone().lt(lit(0.0))).then(-price_change).otherwise(lit(0.0));
-        // Use .ewm(options).mean()
-        let avg_gains = gains.ewm_mean(EWMOptions { alpha: 1.0 / period, adjust: false, min_periods: 1, ..Default::default() });
-        let avg_losses = losses.ewm_mean(EWMOptions { alpha: 1.0 / period, adjust: false, min_periods: 1, ..Default::default() });
+        
+        // Use Wilder's smoothing (alpha = 1/period) for RSI
+        let alpha = 1.0 / period;
+        let avg_gains = gains.ewm_mean(EWMOptions { 
+            alpha, 
+            adjust: false, 
+            min_periods: 1, // Start calculating from first period
+            ..Default::default() 
+        });
+        let avg_losses = losses.ewm_mean(EWMOptions { 
+            alpha, 
+            adjust: false, 
+            min_periods: 1, // Start calculating from first period
+            ..Default::default() 
+        });
 
-        let rs = avg_gains / avg_losses;
-        (lit(100.0) - (lit(100.0) / (lit(1.0) + rs))).alias("rsi")
+        // Calculate RS (Relative Strength)
+        let rs = when(avg_losses.clone().gt(lit(1e-10)))
+            .then(avg_gains.clone() / avg_losses.clone())
+            .otherwise(lit(f64::INFINITY)); // If no losses, RS is infinite (RSI = 100)
+            
+        // RSI = 100 - (100 / (1 + RS))
+        // Handle special cases: if RS is infinite, RSI = 100; if RS is 0, RSI = 0
+        when(rs.clone().is_infinite())
+            .then(lit(100.0))
+            .when(rs.clone().is_nan().or(avg_gains.is_null()).or(avg_losses.is_null()))
+            .then(lit(f64::NAN))
+            .otherwise(lit(100.0) - (lit(100.0) / (lit(1.0) + rs)))
+            .alias("rsi")
     }
 
     fn compute_sma_expr(&self) -> Expr {
@@ -232,7 +255,11 @@ impl FeaturePipeline {
     fn compute_momentum_expr(&self) -> Expr {
         // Calculate percentage change manually using shift
         let prev_close = col("close").shift(lit(1));
-        ((col("close") - prev_close.clone()) / prev_close).alias("momentum")
+        // Handle the first row by using 0.0 momentum when prev_close is null
+        when(prev_close.clone().is_null().or(prev_close.clone().eq(lit(0.0))))
+            .then(lit(0.0))
+            .otherwise((col("close") - prev_close.clone()) / prev_close)
+            .alias("momentum")
     }
 
     // Typical price helper: (high+low+close)/3
@@ -281,65 +308,119 @@ impl FeaturePipeline {
         wt1.ewm_mean(EWMOptions { alpha: 2.0 / (4.0 + 1.0), adjust: false, min_periods: 1, ..Default::default() }).alias("wavetrend_2")
     }
 
-    // CCI
+    // CCI - Commodity Channel Index
     fn compute_cci_expr(&self) -> Expr {
         let options = RollingOptionsFixedWindow {
             window_size: self.ma_period,
+            min_periods: self.ma_period.min(10), // Require at least 10 periods for reasonable CCI
             ..Default::default()
         };
+        
         let tp = self.compute_typical_price_expr();
-        let tp_ma = tp.clone().rolling_mean(options.clone());
-        let mad = (tp.clone() - tp_ma.clone()).abs().rolling_mean(options);
-        // Add small epsilon to prevent division by zero
-        when(mad.clone().gt(lit(1e-8)))
-            .then((tp - tp_ma) / (lit(0.015) * mad))
-            .otherwise(lit(0.0))
+        let tp_sma = tp.clone().rolling_mean(options.clone());
+        
+        // Mean Deviation calculation (as per standard CCI formula):
+        // 1. For each period: |TP - SMA(TP)|
+        // 2. Take the mean of these absolute deviations over the window
+        let mean_deviation = (tp.clone() - tp_sma.clone()).abs().rolling_mean(options);
+        
+        // CCI = (TP - SMA(TP)) / (0.015 * Mean Deviation)
+        // The constant 0.015 scales values to typically fall within ±100
+        when(tp_sma.clone().is_not_null()
+            .and(mean_deviation.clone().is_not_null())
+            .and(mean_deviation.clone().gt(lit(1e-10))))
+            .then((tp - tp_sma) / (lit(0.015) * mean_deviation))
+            .otherwise(lit(f64::NAN))
             .alias("cci")
     }
 
-    // ADX (approximate smoothing with EWM)
+    // ADX - Average Directional Index (following standard Wilder's method)
     fn compute_adx_expr(&self) -> Expr {
         let prev_high = col("high").shift(lit(1));
         let prev_low = col("low").shift(lit(1));
         let prev_close = col("close").shift(lit(1));
 
+        // True Range calculation: max(H-L, |H-PC|, |L-PC|)
         let tr1 = col("high") - col("low");
         let tr2 = (col("high") - prev_close.clone()).abs();
         let tr3 = (col("low") - prev_close.clone()).abs();
-        let tr = when(tr1.clone().gt(tr2.clone()))
-            .then(when(tr1.clone().gt(tr3.clone()))
-                .then(tr1)
-                .otherwise(tr3.clone()))
-            .otherwise(when(tr2.clone().gt(tr3.clone()))
-                .then(tr2)
-                .otherwise(tr3));
+        
+        // Handle null values in the first row
+        let tr = when(prev_close.clone().is_null())
+            .then(tr1.clone()) // For first row, just use high-low
+            .otherwise(
+                // Calculate True Range: max(H-L, |H-PC|, |L-PC|)
+                when(tr1.clone().gt(tr2.clone()))
+                    .then(when(tr1.clone().gt(tr3.clone()))
+                        .then(tr1)
+                        .otherwise(tr3.clone()))
+                    .otherwise(when(tr2.clone().gt(tr3.clone()))
+                        .then(tr2)
+                        .otherwise(tr3))
+            );
 
-        let up_move = col("high") - prev_high.clone();
-        let down_move = prev_low.clone() - col("low");
-        let plus_dm = when((up_move.clone().gt(lit(0.0)))
-            .and(up_move.clone().gt(down_move.clone())))
+        // Directional Movement calculation
+        // +DM = Current High - Previous High (when > 0 and > -DM)
+        // -DM = Previous Low - Current Low (when > 0 and > +DM)
+        let up_move = when(prev_high.clone().is_null())
+            .then(lit(0.0))
+            .otherwise(col("high") - prev_high.clone());
+        let down_move = when(prev_low.clone().is_null())
+            .then(lit(0.0))
+            .otherwise(prev_low.clone() - col("low"));
+            
+        // Apply the standard +DM/-DM rules
+        let plus_dm = when(up_move.clone().gt(down_move.clone()).and(up_move.clone().gt(lit(0.0))))
             .then(up_move.clone())
             .otherwise(lit(0.0));
-        let minus_dm = when((down_move.clone().gt(lit(0.0)))
-            .and(down_move.clone().gt(up_move.clone())))
+        let minus_dm = when(down_move.clone().gt(up_move.clone()).and(down_move.clone().gt(lit(0.0))))
             .then(down_move.clone())
             .otherwise(lit(0.0));
 
-        let alpha = 2.0 / (self.ma_period as f64 + 1.0);
-        let tr_s = tr.ewm_mean(EWMOptions { alpha, adjust: false, min_periods: 1, ..Default::default() });
-        let plus_dm_s = plus_dm.ewm_mean(EWMOptions { alpha, adjust: false, min_periods: 1, ..Default::default() });
-        let minus_dm_s = minus_dm.ewm_mean(EWMOptions { alpha, adjust: false, min_periods: 1, ..Default::default() });
+        // Wilder's smoothing approximation using EWM
+        // Note: True Wilder's smoothing would be: New = Old - (Old/Period) + Current
+        // EWM with alpha=1/period is a close approximation
+        let alpha = 1.0 / self.ma_period as f64;
+        let tr_s = tr.ewm_mean(EWMOptions { 
+            alpha, 
+            adjust: false, 
+            min_periods: self.ma_period, 
+            ..Default::default() 
+        });
+        let plus_dm_s = plus_dm.ewm_mean(EWMOptions { 
+            alpha, 
+            adjust: false, 
+            min_periods: self.ma_period, 
+            ..Default::default() 
+        });
+        let minus_dm_s = minus_dm.ewm_mean(EWMOptions { 
+            alpha, 
+            adjust: false, 
+            min_periods: self.ma_period, 
+            ..Default::default() 
+        });
 
-        let di_plus = lit(100.0) * when(tr_s.clone().gt(lit(1e-8)))
-            .then(plus_dm_s.clone() / tr_s.clone())
+        // Directional Indicators: +DI = (+DM_smoothed / TR_smoothed) * 100
+        let di_plus = when(tr_s.clone().gt(lit(1e-10)))
+            .then(lit(100.0) * plus_dm_s.clone() / tr_s.clone())
             .otherwise(lit(0.0));
-        let di_minus = lit(100.0) * when(tr_s.clone().gt(lit(1e-8)))
-            .then(minus_dm_s.clone() / tr_s)
+        let di_minus = when(tr_s.clone().gt(lit(1e-10)))
+            .then(lit(100.0) * minus_dm_s.clone() / tr_s)
             .otherwise(lit(0.0));
-        let dx = lit(100.0) * when((di_plus.clone() + di_minus.clone()).gt(lit(1e-8)))
-            .then((di_plus.clone() - di_minus.clone()).abs() / (di_plus + di_minus))
+            
+        // Directional Index: DX = |+DI - -DI| / (+DI + -DI) * 100
+        let di_sum = di_plus.clone() + di_minus.clone();
+        let dx = when(di_sum.clone().gt(lit(1e-10)))
+            .then(lit(100.0) * (di_plus - di_minus).abs() / di_sum)
             .otherwise(lit(0.0));
-        dx.ewm_mean(EWMOptions { alpha, adjust: false, min_periods: 1, ..Default::default() }).alias("adx")
+            
+        // ADX is the smoothed DX using the same Wilder's smoothing
+        dx.ewm_mean(EWMOptions { 
+            alpha, 
+            adjust: false, 
+            min_periods: self.ma_period, 
+            ..Default::default() 
+        }).alias("adx")
     }
 
     /// Generate Mean Reversion signal
