@@ -38,6 +38,7 @@ pub struct Signals {
     pub s_tsmom: Option<f64>, // Time Series Momentum signal
 }
 
+#[derive(Debug)]
 pub struct FeaturePipeline {
     window_size: usize,
     rsi_period: usize,

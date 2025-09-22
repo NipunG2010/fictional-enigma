@@ -5,6 +5,7 @@ members = [
     "feature-pipeline",
     "ldc-engine",
     "signal-fusion",
+    "training-data-cli",
 ]
 
 [workspace.package]

@@ -1,0 +1,29 @@
+{
+  "horizon": 24,
+  "features": [
+    "rsi_14",
+    "sma_20",
+    "ema_12", 
+    "ema_26",
+    "macd",
+    "atr_14"
+  ],
+  "label_thresholds": {
+    "buy_threshold": 0.015,
+    "sell_threshold": -0.015
+  },
+  "validation": {
+    "strictness": "strict",
+    "max_missing_percentage": 1.0,
+    "outlier_method": "zscore",
+    "outlier_threshold": 2.5,
+    "expected_interval_seconds": 300,
+    "require_sequential_timestamps": true,
+    "fail_on_duplicates": true
+  },
+  "output": {
+    "format": "parquet",
+    "include_metadata": true,
+    "compression": "gzip"
+  }
+}

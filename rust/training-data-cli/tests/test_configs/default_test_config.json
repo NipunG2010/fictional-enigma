@@ -1,0 +1,31 @@
+{
+  "horizon": 12,
+  "features": [
+    "rsi_14",
+    "sma_20", 
+    "ema_12",
+    "ema_26",
+    "macd",
+    "macd_signal",
+    "bb_upper",
+    "bb_middle", 
+    "bb_lower",
+    "atr_14"
+  ],
+  "label_thresholds": {
+    "buy_threshold": 0.02,
+    "sell_threshold": -0.02
+  },
+  "validation": {
+    "strictness": "normal",
+    "max_missing_percentage": 5.0,
+    "outlier_method": "iqr",
+    "outlier_threshold": 3.0,
+    "expected_interval_seconds": 300
+  },
+  "output": {
+    "format": "parquet",
+    "include_metadata": true,
+    "compression": "snappy"
+  }
+}

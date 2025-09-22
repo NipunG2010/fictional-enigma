@@ -1,0 +1,30 @@
+{
+  "horizon": 6,
+  "features": [
+    "rsi_14",
+    "sma_20",
+    "ema_12"
+  ],
+  "label_thresholds": {
+    "buy_threshold": 0.025,
+    "sell_threshold": -0.025
+  },
+  "validation": {
+    "strictness": "lenient",
+    "max_missing_percentage": 10.0,
+    "outlier_method": "iqr",
+    "outlier_threshold": 5.0,
+    "expected_interval_seconds": 300,
+    "skip_duplicate_check": true
+  },
+  "output": {
+    "format": "parquet",
+    "include_metadata": false,
+    "compression": "lz4"
+  },
+  "performance": {
+    "chunk_size": 10000,
+    "parallel_processing": true,
+    "memory_limit_mb": 512
+  }
+}
