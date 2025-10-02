@@ -13,6 +13,39 @@ use thiserror::Error;
 // Import the feature pipeline types for integration
 use feature_pipeline::{Features, OHLCV};
 
+// Performance validation module
+pub mod performance_validation;
+
+// Performance benchmarking and comparison utilities
+pub mod performance_benchmarking;
+
+// Performance reporting and visualization
+pub mod performance_reporting;
+
+// Backtesting module
+pub mod backtesting;
+
+// Statistical analysis module
+pub mod statistical_analysis;
+
+// Integration testing framework
+pub mod integration_testing;
+
+// Test data generation and management utilities
+pub mod test_data_generation;
+
+// Automated test execution and CI/CD integration
+pub mod automated_test_runner;
+
+// Comprehensive error handling and test diagnostics
+pub mod testing_error;
+pub mod test_diagnostics;
+pub mod graceful_recovery;
+
+// Test modules
+#[cfg(test)]
+mod test_data_generation_tests;
+
 // Test modules
 #[cfg(test)]
 mod memory_tests;
@@ -60,7 +93,7 @@ pub enum PerformanceOptimizationError {
 }
 
 /// Direction labels matching Pine Script
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Direction {
     Short = -1,
     Neutral = 0,
@@ -1999,6 +2032,11 @@ impl LDCEngine {
     /// Get configuration
     pub fn config(&self) -> &LDCConfig {
         &self.config
+    }
+    
+    /// Get mutable configuration (for testing purposes)
+    pub fn get_config_mut(&mut self) -> Result<&mut LDCConfig> {
+        Ok(&mut self.config)
     }
     
     /// Update configuration with validation and performance parameter handling

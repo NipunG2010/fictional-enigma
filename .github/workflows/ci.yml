@@ -43,6 +43,20 @@ jobs:
     
     - name: Rust Tests
       run: cd rust && cargo test --all
+    
+    - name: Run LDC Engine Automated Tests
+      run: |
+        cd rust/ldc-engine
+        # Run regular cargo tests (automated test runner will be used when tests are fixed)
+        cargo test --lib
+    
+    - name: Upload LDC Engine Test Reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: ldc-engine-test-reports
+        path: rust/ldc-engine/test_reports/
+        retention-days: 30
 
   python-tests:
     name: Python Tests
