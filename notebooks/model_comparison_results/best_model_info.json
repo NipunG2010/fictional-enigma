@@ -1,0 +1,25 @@
+{
+  "recommended_model": "pomegranate_2_full",
+  "selection_criteria": "Lowest BIC",
+  "model_details": {
+    "library": "pomegranate",
+    "n_states": 2,
+    "covariance_type": "full",
+    "converged": true,
+    "n_iter": 100,
+    "training_time": 2.384185791015625e-07,
+    "transition_matrix": "[[0.95256131 0.66966343]\n [0.37838757 0.17367179]]",
+    "start_probabilities": "[0.92297198 0.27637832]",
+    "log_likelihood": -710.0827571182558,
+    "aic": 1120.8055461468052,
+    "bic": 1269.7495426808352,
+    "n_parameters": 50
+  },
+  "comparison_summary": {
+    "total_models_tested": 8,
+    "hmmlearn_models": 5,
+    "pomegranate_models": 3,
+    "successful_trainings": 8
+  },
+  "created_at": "2025-10-03 15:04:46.116432"
+}

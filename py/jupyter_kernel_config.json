@@ -1,0 +1,21 @@
+{
+  "display_name": "IMP Research Environment",
+  "language": "python",
+  "argv": [
+    "python",
+    "-m",
+    "ipykernel_launcher",
+    "-f",
+    "{connection_file}"
+  ],
+  "env": {
+    "PYTHONPATH": "${PYTHONPATH}:${PWD}",
+    "JUPYTER_ENABLE_LAB": "yes"
+  },
+  "metadata": {
+    "debugger": true,
+    "kernel_provisioner": {
+      "provisioner_name": "local-provisioner"
+    }
+  }
+}

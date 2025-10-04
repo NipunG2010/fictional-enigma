@@ -1,0 +1,12 @@
+{
+  "max_parallel_suites": 4,
+  "suite_timeout_seconds": 300,
+  "test_timeout_seconds": 60,
+  "enable_regression_detection": true,
+  "regression_threshold_percent": 10.0,
+  "output_directory": "test_reports",
+  "machine_readable_output": true,
+  "test_selection": "All",
+  "cleanup_timeout_seconds": 30,
+  "verbose": false
+}

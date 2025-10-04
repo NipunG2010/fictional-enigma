@@ -1,0 +1,347 @@
+{
+  "metadata": {
+    "n_states": 3,
+    "n_observations": 500,
+    "feature_names": [
+      "s_ldc",
+      "s_mr",
+      "s_tsmom"
+    ],
+    "generated_at": "2025-10-04T12:23:22.507836"
+  },
+  "regime_characteristics": {
+    "0": {
+      "state_id": 0,
+      "mean_values": {
+        "s_ldc": 0.25810004588971025,
+        "s_mr": 0.31110790996894255,
+        "s_tsmom": 0.3035964445927893
+      },
+      "std_values": {
+        "s_ldc": 0.40484203603549146,
+        "s_mr": 0.20971890818381106,
+        "s_tsmom": 0.3553138792968164
+      },
+      "volatility": 0.3232916078387063,
+      "trend_strength": 0.7583900785632327,
+      "mean_reversion_score": 0.8163729613415464,
+      "sample_count": 164,
+      "feature_statistics": {
+        "s_ldc": {
+          "mean": 0.25810004588971025,
+          "std": 0.40484203603549146,
+          "min": -0.7798210042063869,
+          "max": 1.0379605866435344,
+          "median": 0.29357257547588245,
+          "skewness": -0.14707016988763288,
+          "kurtosis": -1.0673730229093465
+        },
+        "s_mr": {
+          "mean": 0.31110790996894255,
+          "std": 0.20971890818381106,
+          "min": -0.1765745578702365,
+          "max": 0.8629317133347018,
+          "median": 0.29489993022871985,
+          "skewness": 0.17428096543295818,
+          "kurtosis": -0.37698525306296427
+        },
+        "s_tsmom": {
+          "mean": 0.3035964445927893,
+          "std": 0.3553138792968164,
+          "min": -0.5921784386327523,
+          "max": 1.2705462981309443,
+          "median": 0.340713374137111,
+          "skewness": -0.18675669325606908,
+          "kurtosis": -0.3284563927275568
+        }
+      }
+    },
+    "1": {
+      "state_id": 1,
+      "mean_values": {
+        "s_ldc": 0.2805345886693092,
+        "s_mr": 0.2340684557649428,
+        "s_tsmom": 0.27662847707945465
+      },
+      "std_values": {
+        "s_ldc": 0.3795906334552861,
+        "s_mr": 0.24357622279775099,
+        "s_tsmom": 0.2690620350923578
+      },
+      "volatility": 0.29740963044846497,
+      "trend_strength": 0.7801893251173462,
+      "mean_reversion_score": 0.8784343223643527,
+      "sample_count": 170,
+      "feature_statistics": {
+        "s_ldc": {
+          "mean": 0.2805345886693092,
+          "std": 0.3795906334552861,
+          "min": -0.4915011586789353,
+          "max": 1.028788817865065,
+          "median": 0.3255654095926881,
+          "skewness": -0.07255519254177624,
+          "kurtosis": -1.150922174893453
+        },
+        "s_mr": {
+          "mean": 0.2340684557649428,
+          "std": 0.24357622279775099,
+          "min": -0.24825346801381454,
+          "max": 1.0157761616910475,
+          "median": 0.21399882651945534,
+          "skewness": 0.31544384333830205,
+          "kurtosis": -0.3236762060064997
+        },
+        "s_tsmom": {
+          "mean": 0.27662847707945465,
+          "std": 0.2690620350923578,
+          "min": -0.5532033907456253,
+          "max": 0.918477455137092,
+          "median": 0.267663634887326,
+          "skewness": -0.05653639410374748,
+          "kurtosis": -0.22376399774906508
+        }
+      }
+    },
+    "2": {
+      "state_id": 2,
+      "mean_values": {
+        "s_ldc": 0.035708861878695805,
+        "s_mr": -0.004138291241563957,
+        "s_tsmom": 0.02247621183979696
+      },
+      "std_values": {
+        "s_ldc": 0.7431725782242073,
+        "s_mr": 0.8047701170327985,
+        "s_tsmom": 0.7962942514544692
+      },
+      "volatility": 0.7814123155704916,
+      "trend_strength": 0.04874447602310379,
+      "mean_reversion_score": 0.970846964969042,
+      "sample_count": 166,
+      "feature_statistics": {
+        "s_ldc": {
+          "mean": 0.035708861878695805,
+          "std": 0.7431725782242073,
+          "min": -1.7590447652960657,
+          "max": 2.0586878425998885,
+          "median": 0.014740924901977944,
+          "skewness": 0.19080133694374013,
+          "kurtosis": -0.01793202243351555
+        },
+        "s_mr": {
+          "mean": -0.004138291241563957,
+          "std": 0.8047701170327985,
+          "min": -2.1575093143532573,
+          "max": 2.0215459406988976,
+          "median": 0.030861924324863683,
+          "skewness": 0.04223422950010247,
+          "kurtosis": -0.30079183919413977
+        },
+        "s_tsmom": {
+          "mean": 0.02247621183979696,
+          "std": 0.7962942514544692,
+          "min": -2.1207758467144098,
+          "max": 2.1059056518699126,
+          "median": 0.021190755682145825,
+          "skewness": -0.010783308713579272,
+          "kurtosis": -0.07013906588646401
+        }
+      }
+    }
+  },
+  "state_persistence": {
+    "0": {
+      "state_id": 0,
+      "mean_duration": 1.0,
+      "median_duration": 1.0,
+      "max_duration": 1,
+      "min_duration": 1,
+      "total_occurrences": 164,
+      "stable_periods": 0,
+      "transition_frequencies": {
+        "1": 164
+      },
+      "transition_probabilities": {
+        "1": 1.0
+      }
+    },
+    "1": {
+      "state_id": 1,
+      "mean_duration": 1.0240963855421688,
+      "median_duration": 1.0,
+      "max_duration": 2,
+      "min_duration": 1,
+      "total_occurrences": 166,
+      "stable_periods": 0,
+      "transition_frequencies": {
+        "0": 164,
+        "2": 1
+      },
+      "transition_probabilities": {
+        "0": 0.9939393939393939,
+        "2": 0.006060606060606061
+      }
+    },
+    "2": {
+      "state_id": 2,
+      "mean_duration": 166.0,
+      "median_duration": 166.0,
+      "max_duration": 166,
+      "min_duration": 166,
+      "total_occurrences": 1,
+      "stable_periods": 1,
+      "transition_frequencies": {
+        "1": 1
+      },
+      "transition_probabilities": {
+        "1": 1.0
+      }
+    }
+  },
+  "economic_interpretations": {
+    "0": {
+      "state_id": 0,
+      "regime_type": "Trending",
+      "market_condition": "Sideways",
+      "risk_level": "Medium",
+      "trading_recommendation": "Favor momentum strategies; Regime is transient - favor shorter timeframes",
+      "key_characteristics": [
+        "Strong trending behavior",
+        "Strong mean reversion",
+        "Transient regime"
+      ],
+      "correlated_events": []
+    },
+    "1": {
+      "state_id": 1,
+      "regime_type": "Trending",
+      "market_condition": "Sideways",
+      "risk_level": "Low",
+      "trading_recommendation": "Favor momentum strategies; Regime is transient - favor shorter timeframes",
+      "key_characteristics": [
+        "Strong trending behavior",
+        "Strong mean reversion",
+        "Transient regime"
+      ],
+      "correlated_events": []
+    },
+    "2": {
+      "state_id": 2,
+      "regime_type": "High Volatility",
+      "market_condition": "Sideways",
+      "risk_level": "High",
+      "trading_recommendation": "Reduce position sizes, increase stop losses; Implement strict risk controls; Regime shows persistence - suitable for longer holding periods",
+      "key_characteristics": [
+        "Very high volatility",
+        "Strong mean reversion",
+        "Highly persistent regime"
+      ],
+      "correlated_events": []
+    }
+  },
+  "feature_importance": {
+    "0": {
+      "state_id": 0,
+      "feature_scores": {
+        "s_ldc": 0.4262087031234298,
+        "s_mr": 0.22987783100958353,
+        "s_tsmom": 0.3439134658669866
+      },
+      "ranked_features": [
+        [
+          "s_ldc",
+          0.4262087031234298
+        ],
+        [
+          "s_tsmom",
+          0.3439134658669866
+        ],
+        [
+          "s_mr",
+          0.22987783100958353
+        ]
+      ],
+      "dominant_features": [
+        "s_ldc",
+        "s_tsmom"
+      ]
+    },
+    "1": {
+      "state_id": 1,
+      "feature_scores": {
+        "s_ldc": 0.3929270543053862,
+        "s_mr": 0.306592558441126,
+        "s_tsmom": 0.3004803872534877
+      },
+      "ranked_features": [
+        [
+          "s_ldc",
+          0.3929270543053862
+        ],
+        [
+          "s_mr",
+          0.306592558441126
+        ],
+        [
+          "s_tsmom",
+          0.3004803872534877
+        ]
+      ],
+      "dominant_features": [
+        "s_ldc",
+        "s_mr",
+        "s_tsmom"
+      ]
+    },
+    "2": {
+      "state_id": 2,
+      "feature_scores": {
+        "s_ldc": 0.08313415127124503,
+        "s_mr": 0.7754991287112032,
+        "s_tsmom": 0.1413667200175518
+      },
+      "ranked_features": [
+        [
+          "s_mr",
+          0.7754991287112032
+        ],
+        [
+          "s_tsmom",
+          0.1413667200175518
+        ],
+        [
+          "s_ldc",
+          0.08313415127124503
+        ]
+      ],
+      "dominant_features": [
+        "s_mr"
+      ]
+    }
+  },
+  "validation": {
+    "regime_stability": 0.0,
+    "state_separability": 0.05367897193278267,
+    "temporal_consistency": 0.00010175828622116523
+  },
+  "summary": {
+    "total_states": 3,
+    "dominant_regime": {
+      "state_id": 1,
+      "interpretation": "Trending"
+    },
+    "most_persistent_regime": {
+      "state_id": 2,
+      "mean_duration": 166.0
+    },
+    "highest_risk_regime": {
+      "state_id": 2,
+      "volatility": 0.7814123155704916
+    },
+    "key_insights": [
+      "State 0: Trending - Favor momentum strategies; Regime is transient - favor shorter timeframes",
+      "State 1: Trending - Favor momentum strategies; Regime is transient - favor shorter timeframes",
+      "State 2: High Volatility - Reduce position sizes, increase stop losses; Implement strict risk controls; Regime shows persistence - suitable for longer holding periods"
+    ]
+  }
+}
