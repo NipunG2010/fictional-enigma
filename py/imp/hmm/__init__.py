@@ -22,6 +22,13 @@ from .regime_analysis import (
     EconomicInterpretation,
     FeatureImportance
 )
+from .weight_optimizer import (
+    StateWeightOptimizer,
+    OptimizationConfig,
+    WeightValidator,
+    WalkForwardValidator,
+    WalkForwardConfig
+)
 
 __all__ = [
     "HMMTrainer",
@@ -40,5 +47,10 @@ __all__ = [
     "RegimeCharacteristics",
     "StatePersistence",
     "EconomicInterpretation",
-    "FeatureImportance"
+    "FeatureImportance",
+    "StateWeightOptimizer",
+    "OptimizationConfig",
+    "WeightValidator",
+    "WalkForwardValidator",
+    "WalkForwardConfig"
 ]

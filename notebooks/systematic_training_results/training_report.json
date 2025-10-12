@@ -1,0 +1,44 @@
+{
+  "timestamp": "2025-10-10T18:39:16.188162",
+  "best_model": {
+    "configuration": "4_states",
+    "scores": {
+      "Configuration": "4_states",
+      "States": 4,
+      "Combined Score": -13.277342962264647,
+      "AIC": 13595.081578005516,
+      "BIC": 13880.727603442163,
+      "CV Score": -2588.9951075113963,
+      "Interpretability": 0.7169500359622404
+    }
+  },
+  "all_models": [
+    {
+      "Configuration": "4_states",
+      "States": 4,
+      "Combined Score": -13.277342962264647,
+      "AIC": 13595.081578005516,
+      "BIC": 13880.727603442163,
+      "CV Score": -2588.9951075113963,
+      "Interpretability": 0.7169500359622404
+    },
+    {
+      "Configuration": "2_states",
+      "States": 2,
+      "Combined Score": -13.891261234082712,
+      "AIC": 14906.9754729949,
+      "BIC": 15024.594424645284,
+      "CV Score": -2551.89023961823,
+      "Interpretability": 0.9599510722290095
+    },
+    {
+      "Configuration": "3_states",
+      "States": 3,
+      "Combined Score": -14.454404725984077,
+      "AIC": 15453.676539574057,
+      "BIC": 15649.70812565803,
+      "CV Score": -2622.619753710841,
+      "Interpretability": 0.6092509050361589
+    }
+  ]
+}

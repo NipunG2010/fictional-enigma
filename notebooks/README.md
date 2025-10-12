@@ -110,6 +110,26 @@ This directory contains a comprehensive set of Jupyter notebooks for Hidden Mark
 
 **Perfect for**: Production deployment, MLOps, model lifecycle management
 
+### 08_fusion_weight_optimization.ipynb ⭐ NEW
+**Purpose**: Optimize fusion weights for combining signals based on market regimes
+
+**Key Features**:
+- Load trained HMM models and signal data
+- Optimize weights using scipy SLSQP and grid search methods
+- Visualize optimized weights per state with bar charts
+- Compare performance metrics (Sharpe ratio, drawdown, win rate)
+- Statistical significance testing of improvements
+- Walk-forward validation for robustness assessment
+- Export optimized weights for production use
+
+**Outputs**:
+- `fusion_weight_results/fusion_weights_scipy.json` - Scipy optimized weights
+- `fusion_weight_results/fusion_weights_grid.json` - Grid search optimized weights
+- `fusion_weight_results/optimization_summary.json` - Complete optimization results
+- Performance visualizations and validation reports
+
+**Perfect for**: Signal fusion optimization, regime-based weight allocation, performance improvement
+
 ## Utilities
 
 ### utils/notebook_utils.py
@@ -213,6 +233,10 @@ The notebooks are designed to work together in sequence:
     ↓ (parameter_optimization_results/)
 05_parameter_tuning_demo.ipynb (Optional)
     ↓
+07_systematic_hmm_training.ipynb
+    ↓ (systematic_training_results/)
+08_fusion_weight_optimization.ipynb ⭐ NEW
+    ↓ (fusion_weight_results/)
 06_production_deployment_tutorial.ipynb (Deployment)
 ```
 
@@ -235,10 +259,24 @@ notebooks/
 │   ├── signals_with_regimes.parquet
 │   ├── state_probabilities.npy
 │   └── state_sequence.npy
-└── parameter_optimization_results/    # From 04_parameter_optimization
-    ├── optimization_results.json
-    ├── grid_search_results.csv
-    └── grid_search_results.json
+├── parameter_optimization_results/    # From 04_parameter_optimization
+│   ├── optimization_results.json
+│   ├── grid_search_results.csv
+│   └── grid_search_results.json
+├── systematic_training_results/       # From 07_systematic_hmm_training
+│   ├── hmm_2_states.json
+│   ├── hmm_3_states.json
+│   ├── hmm_4_states.json
+│   ├── hmm_best.json
+│   └── training_report.json
+└── fusion_weight_results/             # From 08_fusion_weight_optimization ⭐ NEW
+    ├── fusion_weights_scipy.json
+    ├── fusion_weights_grid.json
+    ├── optimization_summary.json
+    ├── fusion_weight_comparison.png
+    ├── fusion_metrics_comparison.png
+    ├── fusion_cumulative_returns.png
+    └── fusion_walk_forward.png
 ```
 
 ## Key Features

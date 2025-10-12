@@ -702,45 +702,142 @@ class HMMTrainer(EnhancedHMMTrainer):
         self, 
         observations: np.ndarray, 
         artifact: HMMArtifact,
-        returns: np.ndarray
+        returns: np.ndarray,
+        optimization_config: Optional['OptimizationConfig'] = None
     ) -> FusionWeights:
         """
-        Compute optimal fusion weights for each state.
+        Compute optimal fusion weights for each state using Sharpe ratio optimization.
         
         Args:
-            observations: Signal observations
+            observations: Signal observations (T, 3) for [s_LDC, s_MR, s_TSMOM]
             artifact: Trained HMM artifact
-            returns: Future returns for optimization
+            returns: Future returns for optimization (T,)
+            optimization_config: Configuration for optimization (optional)
             
         Returns:
-            FusionWeights with per-state optimal weights
+            FusionWeights with per-state optimal weights and training metrics
+            
+        Raises:
+            HMMTrainingError: If optimization fails critically
         """
-        # TODO: Implement state-conditioned weight optimization
-        # This is a placeholder implementation
+        # Import here to avoid circular dependency
+        from .weight_optimizer import StateWeightOptimizer, OptimizationConfig
+        
+        # Use default config if not provided
+        if optimization_config is None:
+            optimization_config = OptimizationConfig()
+        
+        logger.info(f"Computing state weights using {optimization_config.method} optimization")
         
         try:
+            # Validate inputs
+            if len(observations) != len(returns):
+                raise HMMTrainingError(
+                    f"Observations and returns must have same length: "
+                    f"{len(observations)} != {len(returns)}"
+                )
+            
+            if observations.shape[1] != 3:
+                raise HMMTrainingError(
+                    f"Expected 3 signals, got {observations.shape[1]}"
+                )
+            
+            # Create optimizer
+            optimizer = StateWeightOptimizer(optimization_config)
+            
+            # Get state sequence from trained model
+            logger.info("Predicting state sequence...")
+            state_sequence = self.model.predict(observations)
+            
+            # Signal names
+            signal_names = ['s_LDC', 's_MR', 's_TSMOM']
+            
+            # Optimize weights for each state
             state_weights = []
+            state_sharpes = []
+            state_n_obs = []
+            
             for state in range(artifact.n_states):
-                # Placeholder weights - should be optimized per state
-                weights = {
-                    "w_ldc": 0.33,
-                    "w_mr": 0.33,
-                    "w_tsmom": 0.34
-                }
-                state_weights.append(weights)
+                logger.info(f"Optimizing weights for state {state}...")
+                
+                # Filter data for this state
+                state_mask = state_sequence == state
+                state_returns = returns[state_mask]
+                state_signals = observations[state_mask]
+                
+                n_obs = len(state_returns)
+                state_n_obs.append(n_obs)
+                
+                logger.info(f"  State {state}: {n_obs} observations")
+                
+                # Optimize weights for this state
+                try:
+                    optimal_weights, sharpe = optimizer.optimize_state_weights(
+                        state_returns,
+                        state_signals,
+                        signal_names
+                    )
+                    
+                    state_weights.append(optimal_weights)
+                    state_sharpes.append(sharpe)
+                    
+                    logger.info(
+                        f"  State {state}: Sharpe={sharpe:.3f}, "
+                        f"Weights={optimal_weights}"
+                    )
+                    
+                except Exception as e:
+                    logger.error(f"  State {state} optimization failed: {str(e)}")
+                    # Fall back to equal weights for this state
+                    equal_weights = {name: 1.0 / len(signal_names) for name in signal_names}
+                    state_weights.append(equal_weights)
+                    state_sharpes.append(0.0)
+                    logger.warning(f"  State {state}: Using equal weights as fallback")
+            
+            # Calculate aggregate metrics
+            avg_sharpe = float(np.mean(state_sharpes))
+            weighted_sharpe = float(
+                np.average(state_sharpes, weights=state_n_obs)
+            )
+            
+            logger.info(f"Optimization complete. Average Sharpe: {avg_sharpe:.3f}")
+            logger.info(f"Weighted average Sharpe: {weighted_sharpe:.3f}")
+            
+            # Build training metrics (only float values allowed)
+            training_metrics = {
+                "sharpe_ratio": weighted_sharpe,
+                "avg_sharpe": avg_sharpe,
+            }
+            
+            # Add per-state Sharpe ratios as separate keys
+            for i, sharpe in enumerate(state_sharpes):
+                training_metrics[f"state_{i}_sharpe"] = float(sharpe)
+            
+            # Build metadata (can contain any type)
+            metadata = {
+                "optimization_method": optimization_config.method,
+                "n_states": artifact.n_states,
+                "n_observations": len(observations),
+                "state_n_observations": state_n_obs,
+                "state_sharpes": [float(s) for s in state_sharpes],
+                "risk_free_rate": optimization_config.risk_free_rate,
+                "min_weight": optimization_config.min_weight,
+                "max_weight": optimization_config.max_weight
+            }
             
             return FusionWeights(
                 version="v1.0",
                 state_weights=state_weights,
                 model_version=artifact.version,
-                training_metrics={
-                    "sharpe_ratio": 1.5,  # Placeholder
-                    "max_drawdown": 0.1,  # Placeholder
-                },
-                metadata={
-                    "optimization_method": "sharpe_ratio",
-                    "n_states": artifact.n_states
-                }
+                training_metrics=training_metrics,
+                metadata=metadata
             )
+            
+        except HMMTrainingError:
+            # Re-raise HMMTrainingError as-is
+            raise
         except Exception as e:
-            raise HMMTrainingError(f"Failed to compute state weights: {str(e)}") from e
+            logger.error(f"Weight optimization failed: {str(e)}")
+            raise HMMTrainingError(
+                f"Failed to compute state weights: {str(e)}"
+            ) from e

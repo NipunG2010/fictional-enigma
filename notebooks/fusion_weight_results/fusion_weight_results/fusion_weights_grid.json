@@ -1,0 +1,54 @@
+{
+  "version": "v1.0",
+  "state_weights": [
+    {
+      "s_LDC": 0.0,
+      "s_MR": 1.0,
+      "s_TSMOM": 0.0
+    },
+    {
+      "s_LDC": 0.30000000000000004,
+      "s_MR": 0.1,
+      "s_TSMOM": 0.6
+    },
+    {
+      "s_LDC": 0.2,
+      "s_MR": 0.2,
+      "s_TSMOM": 0.6000000000000001
+    },
+    {
+      "s_LDC": 0.8,
+      "s_MR": 0.1,
+      "s_TSMOM": 0.09999999999999995
+    }
+  ],
+  "model_version": "v1.0",
+  "training_metrics": {
+    "sharpe_ratio": 1.903610407470294,
+    "avg_sharpe": 1.6700579619406002,
+    "state_0_sharpe": 1.2889942998711608,
+    "state_1_sharpe": 2.969656179693967,
+    "state_2_sharpe": 1.7934840336216642,
+    "state_3_sharpe": 0.6280973345756095
+  },
+  "metadata": {
+    "optimization_method": "grid_search",
+    "n_states": 4,
+    "n_observations": 2000,
+    "state_n_observations": [
+      395,
+      431,
+      1099,
+      75
+    ],
+    "state_sharpes": [
+      1.2889942998711608,
+      2.969656179693967,
+      1.7934840336216642,
+      0.6280973345756095
+    ],
+    "risk_free_rate": 0.02,
+    "min_weight": 0.0,
+    "max_weight": 1.0
+  }
+}
