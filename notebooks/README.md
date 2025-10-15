@@ -130,6 +130,25 @@ This directory contains a comprehensive set of Jupyter notebooks for Hidden Mark
 
 **Perfect for**: Signal fusion optimization, regime-based weight allocation, performance improvement
 
+### 09_minio_deployment_workflow.ipynb ⭐ NEW
+**Purpose**: Complete workflow for storing, versioning, and deploying HMM artifacts using MinIO
+
+**Key Features**:
+- Train models and upload to MinIO with semantic versioning
+- List and download artifacts by version
+- Tagging workflow for staging and production deployment
+- Production artifact retrieval patterns
+- Experiment tracking integration
+- Comprehensive troubleshooting guide for common MinIO issues
+
+**Outputs**:
+- Artifacts stored in MinIO with version control
+- Tagged artifacts for staging/production environments
+- Experiment tracking metadata
+- Performance benchmarks
+
+**Perfect for**: MLOps workflows, artifact management, production deployment, version control
+
 ## Utilities
 
 ### utils/notebook_utils.py
@@ -237,6 +256,8 @@ The notebooks are designed to work together in sequence:
     ↓ (systematic_training_results/)
 08_fusion_weight_optimization.ipynb ⭐ NEW
     ↓ (fusion_weight_results/)
+09_minio_deployment_workflow.ipynb ⭐ NEW
+    ↓ (MinIO artifact storage)
 06_production_deployment_tutorial.ipynb (Deployment)
 ```
 
