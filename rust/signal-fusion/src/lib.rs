@@ -1,6 +1,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
+pub mod hmm_client;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignalComponents {
     pub s_ldc: f32,

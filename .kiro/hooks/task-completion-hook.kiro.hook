@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Task Completion Verification",
+  "description": "When told that the current task spec sheet is complete, verify all changes made are correct, update the end of README.md, and git commit the changes",
+  "version": "1",
+  "when": {
+    "type": "userTriggered",
+    "patterns": [
+      "README.md"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "The task spec sheet has been marked as complete. Please:\n1. Verify all the changes made are correct by reviewing the modified files\n2. Update the end of /README.md  (Implementation status) to the lastest task comleted\n3. Update current status in /.kiro/steering/product.md\n4. Create a git commit with an appropriate commit message describing the completion"
+  }
+}

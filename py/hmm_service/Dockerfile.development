@@ -1,0 +1,51 @@
+# Development Dockerfile with hot-reload and debugging capabilities
+FROM python:3.11-slim
+
+# Install system dependencies including development tools
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    python3-dev \
+    curl \
+    vim \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements and install dependencies with development packages
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir \
+    debugpy \
+    pytest \
+    pytest-asyncio \
+    pytest-cov \
+    black \
+    isort \
+    flake8
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash --uid 1000 hmm_user && \
+    chown -R hmm_user:hmm_user /app
+
+# Set environment variables for development
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV HMM_SERVICE_DEBUG=true
+ENV HMM_LOG_LEVEL=DEBUG
+
+# Switch to non-root user
+USER hmm_user
+
+# Expose ports (main service + debugger)
+EXPOSE 8000 8001 5678
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Run with hot-reload for development
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--log-level", "debug"]

@@ -1,0 +1,146 @@
+version: '3.8'
+
+services:
+  hmm-service:
+    build: 
+      context: .
+      target: production
+    ports:
+      - "8000:8000"
+      - "8001:8001"  # Metrics port
+    environment:
+      # Service configuration
+      - HMM_SERVICE_HOST=0.0.0.0
+      - HMM_SERVICE_PORT=8000
+      - HMM_SERVICE_DEBUG=false
+      - HMM_LOG_LEVEL=INFO
+      - HMM_LOG_FORMAT=json
+      
+      # MinIO configuration
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin123
+      - MINIO_BUCKET=hmm-artifacts
+      - MINIO_SECURE=false
+      - MINIO_TIMEOUT=30
+      - MINIO_MAX_RETRIES=3
+      
+      # Model configuration
+      - HMM_DEFAULT_EXPERIMENT_ID=development_hmm
+      - HMM_MODEL_RELOAD_INTERVAL=300
+      - HMM_MODEL_VALIDATION_ENABLED=true
+      
+      # Cache configuration
+      - HMM_CACHE_SIZE=1000
+      - HMM_CACHE_TTL=300
+      - HMM_CACHE_ENABLED=true
+      
+      # Performance settings
+      - HMM_MAX_CONCURRENT_REQUESTS=100
+      - HMM_REQUEST_TIMEOUT=30.0
+      - HMM_INFERENCE_TIMEOUT=5.0
+      
+      # Circuit breaker settings
+      - HMM_CIRCUIT_BREAKER_ENABLED=true
+      - HMM_CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+      - HMM_CIRCUIT_BREAKER_RECOVERY_TIMEOUT=60
+      
+      # Monitoring
+      - HMM_METRICS_ENABLED=true
+      - HMM_METRICS_PORT=8001
+    
+    depends_on:
+      minio:
+        condition: service_healthy
+    
+    restart: unless-stopped
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    networks:
+      - hmm-network
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    
+    restart: unless-stopped
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 10s
+    
+    networks:
+      - hmm-network
+
+  # Optional: Redis for caching (if needed in future)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    
+    restart: unless-stopped
+    
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.1'
+    
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+    networks:
+      - hmm-network
+    
+    profiles:
+      - redis  # Only start with --profile redis
+
+volumes:
+  minio_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  hmm-network:
+    driver: bridge

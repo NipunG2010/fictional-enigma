@@ -1,0 +1,172 @@
+version: '3.8'
+
+services:
+  hmm-service:
+    build: 
+      context: .
+      target: production
+    ports:
+      - "8000:8000"
+      - "8001:8001"  # Metrics port
+    environment:
+      # Service configuration (production)
+      - HMM_SERVICE_HOST=0.0.0.0
+      - HMM_SERVICE_PORT=8000
+      - HMM_SERVICE_WORKERS=4
+      - HMM_SERVICE_DEBUG=false
+      - HMM_LOG_LEVEL=INFO
+      - HMM_LOG_FORMAT=json
+      
+      # Security (production)
+      - HMM_ALLOWED_ORIGINS=${HMM_ALLOWED_ORIGINS:-https://your-domain.com}
+      - HMM_ALLOWED_HOSTS=${HMM_ALLOWED_HOSTS:-your-domain.com}
+      - HMM_API_KEY=${HMM_API_KEY}
+      
+      # MinIO configuration (production)
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET:-hmm-artifacts-prod}
+      - MINIO_SECURE=${MINIO_SECURE:-true}
+      - MINIO_TIMEOUT=30
+      - MINIO_MAX_POOL_SIZE=20
+      - MINIO_MAX_RETRIES=3
+      
+      # Model configuration
+      - HMM_DEFAULT_EXPERIMENT_ID=${HMM_DEFAULT_EXPERIMENT_ID:-production_hmm}
+      - HMM_MODEL_RELOAD_INTERVAL=300
+      - HMM_MODEL_VALIDATION_ENABLED=true
+      
+      # Cache configuration (production)
+      - HMM_CACHE_SIZE=5000
+      - HMM_CACHE_TTL=300
+      - HMM_CACHE_ENABLED=true
+      
+      # Performance settings (production)
+      - HMM_MAX_CONCURRENT_REQUESTS=500
+      - HMM_REQUEST_TIMEOUT=30.0
+      - HMM_INFERENCE_TIMEOUT=5.0
+      
+      # Circuit breaker settings
+      - HMM_CIRCUIT_BREAKER_ENABLED=true
+      - HMM_CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+      - HMM_CIRCUIT_BREAKER_RECOVERY_TIMEOUT=60
+      
+      # Health checks
+      - HMM_HEALTH_CHECK_INTERVAL=30
+      - HMM_STARTUP_TIMEOUT=120
+      
+      # Monitoring
+      - HMM_METRICS_ENABLED=true
+      - HMM_METRICS_PORT=8001
+      
+      # Resource limits
+      - HMM_MAX_MEMORY_MB=1024
+      - HMM_MAX_CPU_PERCENT=80
+    
+    depends_on:
+      - minio
+    
+    restart: unless-stopped
+    
+    # Production resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    networks:
+      - hmm-prod-network
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_prod_data:/data
+    
+    restart: unless-stopped
+    
+    # Production resource limits for MinIO
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 30s
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    networks:
+      - hmm-prod-network
+
+  # Nginx reverse proxy for production
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - hmm-service
+    restart: unless-stopped
+    
+    networks:
+      - hmm-prod-network
+    
+    profiles:
+      - nginx  # Only start with --profile nginx
+
+volumes:
+  minio_prod_data:
+    driver: local
+
+networks:
+  hmm-prod-network:
+    driver: bridge

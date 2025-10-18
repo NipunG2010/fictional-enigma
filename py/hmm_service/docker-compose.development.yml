@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  hmm-service-dev:
+    build: 
+      context: .
+      dockerfile: Dockerfile.development
+    ports:
+      - "8000:8000"
+      - "8001:8001"  # Metrics port
+      - "5678:5678"  # Debugger port
+    environment:
+      # Service configuration (development)
+      - HMM_SERVICE_HOST=0.0.0.0
+      - HMM_SERVICE_PORT=8000
+      - HMM_SERVICE_DEBUG=true
+      - HMM_LOG_LEVEL=DEBUG
+      - HMM_LOG_FORMAT=text
+      
+      # MinIO configuration
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin123
+      - MINIO_BUCKET=hmm-artifacts-dev
+      - MINIO_SECURE=false
+      - MINIO_TIMEOUT=10
+      
+      # Model configuration (relaxed for development)
+      - HMM_DEFAULT_EXPERIMENT_ID=development_hmm
+      - HMM_MODEL_RELOAD_INTERVAL=60
+      - HMM_MODEL_VALIDATION_ENABLED=true
+      
+      # Cache configuration (smaller for development)
+      - HMM_CACHE_SIZE=100
+      - HMM_CACHE_TTL=60
+      - HMM_CACHE_ENABLED=true
+      
+      # Performance settings (relaxed)
+      - HMM_MAX_CONCURRENT_REQUESTS=10
+      - HMM_REQUEST_TIMEOUT=60.0
+      - HMM_INFERENCE_TIMEOUT=10.0
+      
+      # Circuit breaker (disabled for development)
+      - HMM_CIRCUIT_BREAKER_ENABLED=false
+      
+      # Monitoring
+      - HMM_METRICS_ENABLED=true
+      - HMM_METRICS_PORT=8001
+    
+    depends_on:
+      minio:
+        condition: service_healthy
+    
+    volumes:
+      - .:/app  # Mount source code for hot-reload
+      - /app/__pycache__  # Exclude pycache
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    
+    networks:
+      - hmm-dev-network
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_dev_data:/data
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 10s
+    
+    networks:
+      - hmm-dev-network
+
+volumes:
+  minio_dev_data:
+    driver: local
+
+networks:
+  hmm-dev-network:
+    driver: bridge

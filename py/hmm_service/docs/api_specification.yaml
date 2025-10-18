@@ -1,0 +1,1048 @@
+openapi: 3.0.3
+info:
+  title: HMM Microservice API
+  description: |
+    Hidden Markov Model inference service for the IMP trading system.
+    
+    This service provides real-time HMM state probability calculation and fusion weight computation
+    for regime-aware signal fusion in trading applications.
+    
+    ## Features
+    - State probability calculation from observation vectors
+    - Fusion weight computation for signal combination
+    - Model hot-reloading without service downtime
+    - Comprehensive health monitoring and metrics
+    - Structured error handling with detailed diagnostics
+    
+    ## Performance Targets
+    - Inference latency: <20ms (p95)
+    - Health check latency: <5ms
+    - Concurrent requests: 100+ req/sec
+    - Availability: 99.9%
+    
+    ## Authentication
+    Currently no authentication is required. In production, consider implementing:
+    - API key authentication
+    - IP whitelisting
+    - Rate limiting per client
+  version: 1.0.0
+  contact:
+    name: IMP Development Team
+    email: dev@imp-trading.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: https://hmm-service.imp-trading.com
+    description: Production server
+
+paths:
+  /inference/state-probabilities:
+    post:
+      tags:
+        - Inference
+      summary: Calculate HMM state probabilities
+      description: |
+        Calculate Hidden Markov Model state probabilities for a given observation vector.
+        
+        The observation vector should contain exactly 3 values representing:
+        - s_LDC: Lorentzian Distance Classifier signal
+        - s_MR: Mean Reversion signal  
+        - s_TSMOM: Time Series Momentum signal
+        
+        Returns normalized probabilities that sum to 1.0.
+      operationId: calculateStateProbabilities
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InferenceRequest'
+            examples:
+              basic_request:
+                summary: Basic inference request
+                value:
+                  observations: [0.75, -0.32, 0.18]
+                  timestamp: 1640995200
+              with_request_id:
+                summary: Request with tracking ID
+                value:
+                  observations: [0.45, 0.12, -0.67]
+                  timestamp: 1640995260
+                  request_id: "req-12345"
+      responses:
+        '200':
+          description: State probabilities calculated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StateProbabilitiesResponse'
+              examples:
+                successful_response:
+                  summary: Successful state probability calculation
+                  value:
+                    state_probabilities: [0.15, 0.65, 0.20]
+                    most_likely_state: 1
+                    confidence: 0.65
+                    timestamp: 1640995200
+                    processing_time_ms: 12.5
+                    request_id: "req-12345"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /inference/fusion-weights:
+    post:
+      tags:
+        - Inference
+      summary: Calculate fusion weights
+      description: |
+        Calculate fusion weights for signal combination based on current market regime.
+        
+        This endpoint first calculates state probabilities, then computes corresponding
+        fusion weights for each signal type (LDC, MR, TSMOM) based on the per-state
+        weight matrices loaded from the HMM model.
+        
+        Weights are normalized and bounded within [-1.0, 1.0].
+      operationId: calculateFusionWeights
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InferenceRequest'
+            examples:
+              basic_request:
+                summary: Basic fusion weights request
+                value:
+                  observations: [0.75, -0.32, 0.18]
+                  timestamp: 1640995200
+      responses:
+        '200':
+          description: Fusion weights calculated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FusionWeightsResponse'
+              examples:
+                successful_response:
+                  summary: Successful fusion weights calculation
+                  value:
+                    weights:
+                      w_ldc: 0.45
+                      w_mr: 0.30
+                      w_tsmom: 0.25
+                    state_probabilities: [0.15, 0.65, 0.20]
+                    most_likely_state: 1
+                    timestamp: 1640995200
+                    processing_time_ms: 15.2
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /inference/predict:
+    post:
+      tags:
+        - Inference
+      summary: Complete HMM prediction
+      description: |
+        Get complete HMM prediction including both state probabilities and fusion weights.
+        
+        This is the most comprehensive endpoint that provides all inference results
+        in a single request, including model version information and detailed metadata.
+        
+        Recommended for production use when you need both state probabilities and weights.
+      operationId: predict
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InferenceRequest'
+            examples:
+              complete_request:
+                summary: Complete prediction request
+                value:
+                  observations: [0.75, -0.32, 0.18]
+                  timestamp: 1640995200
+                  request_id: "trading-signal-001"
+      responses:
+        '200':
+          description: Complete prediction generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PredictionResponse'
+              examples:
+                successful_response:
+                  summary: Complete prediction response
+                  value:
+                    state_probabilities: [0.15, 0.65, 0.20]
+                    most_likely_state: 1
+                    confidence: 0.65
+                    fusion_weights:
+                      w_ldc: 0.45
+                      w_mr: 0.30
+                      w_tsmom: 0.25
+                    timestamp: 1640995200
+                    processing_time_ms: 18.7
+                    model_version: "v1.2.0"
+                    request_id: "trading-signal-001"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Basic health check
+      description: |
+        Basic health check endpoint for load balancers and monitoring systems.
+        
+        Returns minimal health information with very low latency (<5ms).
+        Use this endpoint for frequent health checks.
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                healthy_service:
+                  summary: Healthy service response
+                  value:
+                    status: "healthy"
+                    timestamp: 1640995200
+                    uptime: 3600.5
+                    version: "1.0.0"
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness check
+      description: |
+        Readiness check for container orchestration and deployment systems.
+        
+        Performs comprehensive checks including:
+        - Model loading status
+        - Cache initialization
+        - MinIO connectivity
+        - Inference engine readiness
+        
+        Returns 503 if service is not ready to handle requests.
+      operationId: readinessCheck
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              examples:
+                ready_service:
+                  summary: Service ready response
+                  value:
+                    ready: true
+                    model_loaded: true
+                    cache_initialized: true
+                    last_inference: 1640995180
+                    checks:
+                      inference_initialized: true
+                      model_loaded: true
+                      model_valid: true
+                      cache_initialized: true
+                      minio_connected: true
+                      performance_manager_healthy: true
+                    timestamp: 1640995200
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              examples:
+                not_ready:
+                  summary: Service not ready response
+                  value:
+                    ready: false
+                    model_loaded: false
+                    cache_initialized: true
+                    last_inference: null
+                    checks:
+                      inference_initialized: false
+                      model_loaded: false
+                      model_valid: false
+                      cache_initialized: true
+                      minio_connected: true
+                      performance_manager_healthy: true
+                    timestamp: 1640995200
+
+  /health/detailed:
+    get:
+      tags:
+        - Health
+      summary: Detailed health information
+      description: |
+        Comprehensive health and system information for monitoring and debugging.
+        
+        Includes:
+        - System metrics (CPU, memory usage)
+        - Model information and statistics
+        - Cache performance metrics
+        - Service configuration
+        - Performance statistics
+        
+        Use sparingly as this endpoint has higher latency than basic health checks.
+      operationId: detailedHealth
+      responses:
+        '200':
+          description: Detailed health information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailedHealthResponse'
+
+  /models/reload:
+    post:
+      tags:
+        - Models
+      summary: Reload HMM model
+      description: |
+        Hot-reload HMM model from MinIO storage without service downtime.
+        
+        Supports:
+        - Loading specific experiment IDs and versions
+        - Model validation before activation
+        - Fallback to previous model on failure
+        - Atomic model switching
+        
+        The service continues operating with the previous model if reload fails.
+      operationId: reloadModel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelReloadRequest'
+            examples:
+              reload_latest:
+                summary: Reload latest model version
+                value:
+                  experiment_id: "production_hmm"
+                  version: "latest"
+                  validate_model: true
+              reload_specific:
+                summary: Reload specific model version
+                value:
+                  experiment_id: "hmm_v2"
+                  version: "1.2.0"
+                  validate_model: true
+      responses:
+        '200':
+          description: Model reloaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelReloadResponse'
+              examples:
+                successful_reload:
+                  summary: Successful model reload
+                  value:
+                    success: true
+                    model_info:
+                      experiment_id: "production_hmm"
+                      version: "1.2.0"
+                      load_time: 1640995200
+                      n_states: 3
+                      n_features: 3
+                      has_fusion_weights: true
+                      validation_passed: true
+                    reload_time: 2.5
+                    previous_model:
+                      experiment_id: "production_hmm"
+                      version: "1.1.0"
+                      load_time: 1640991600
+                    timestamp: 1640995200
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/ModelNotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /models/current:
+    get:
+      tags:
+        - Models
+      summary: Get current model info
+      description: |
+        Get detailed information about the currently loaded HMM model.
+        
+        Includes:
+        - Model metadata (states, features, version)
+        - Performance statistics
+        - Training information
+        - Load timestamp
+        
+        Returns 404 if no model is currently loaded.
+      operationId: getCurrentModel
+      responses:
+        '200':
+          description: Current model information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentModelResponse'
+              examples:
+                current_model:
+                  summary: Current model information
+                  value:
+                    experiment_id: "production_hmm"
+                    version: "1.2.0"
+                    load_time: 1640995200
+                    model_info:
+                      n_states: 3
+                      n_features: 3
+                      has_fusion_weights: true
+                      library: "hmmlearn"
+                      training_window:
+                        start_date: "2024-01-01"
+                        end_date: "2024-01-31"
+                      training_samples: 50000
+                      validation_score: 0.85
+                      artifact_size_mb: 2.5
+                    performance_stats:
+                      total_inferences: 12500
+                      avg_inference_time_ms: 15.2
+                      error_rate: 0.001
+                      cache_hit_rate: 0.75
+                    timestamp: 1640995200
+        '404':
+          $ref: '#/components/responses/ModelNotFound'
+
+  /models/available:
+    get:
+      tags:
+        - Models
+      summary: List available models
+      description: |
+        List all available HMM models in MinIO storage.
+        
+        Returns metadata for all models including:
+        - Experiment IDs and versions
+        - Creation timestamps
+        - Model sizes and parameters
+        - Validation scores
+        
+        Useful for model management and deployment planning.
+      operationId: listAvailableModels
+      responses:
+        '200':
+          description: Available models list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailableModelsResponse'
+              examples:
+                available_models:
+                  summary: List of available models
+                  value:
+                    models:
+                      - experiment_id: "production_hmm"
+                        version: "1.2.0"
+                        created_at: 1640995200
+                        size_mb: 2.5
+                        n_states: 3
+                        n_features: 3
+                        validation_score: 0.85
+                        has_fusion_weights: true
+                        library: "hmmlearn"
+                      - experiment_id: "production_hmm"
+                        version: "1.1.0"
+                        created_at: 1640991600
+                        size_mb: 2.3
+                        n_states: 3
+                        n_features: 3
+                        validation_score: 0.82
+                        has_fusion_weights: true
+                        library: "hmmlearn"
+                    total_count: 2
+                    timestamp: 1640995200
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+components:
+  schemas:
+    InferenceRequest:
+      type: object
+      required:
+        - observations
+      properties:
+        observations:
+          type: array
+          items:
+            type: number
+            format: float
+          minItems: 3
+          maxItems: 3
+          description: "Observation vector [s_LDC, s_MR, s_TSMOM]"
+          example: [0.75, -0.32, 0.18]
+        timestamp:
+          type: integer
+          format: int64
+          description: "Unix timestamp for the observation"
+          example: 1640995200
+        request_id:
+          type: string
+          description: "Optional request identifier for tracking"
+          example: "req-12345"
+
+    StateProbabilitiesResponse:
+      type: object
+      required:
+        - state_probabilities
+        - most_likely_state
+        - confidence
+        - timestamp
+        - processing_time_ms
+      properties:
+        state_probabilities:
+          type: array
+          items:
+            type: number
+            format: float
+            minimum: 0.0
+            maximum: 1.0
+          description: "Normalized probability distribution over HMM states"
+          example: [0.15, 0.65, 0.20]
+        most_likely_state:
+          type: integer
+          minimum: 0
+          description: "Index of the most likely state"
+          example: 1
+        confidence:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: "Confidence score (maximum probability)"
+          example: 0.65
+        timestamp:
+          type: integer
+          format: int64
+          description: "Response timestamp"
+          example: 1640995200
+        processing_time_ms:
+          type: number
+          format: float
+          minimum: 0.0
+          description: "Processing time in milliseconds"
+          example: 12.5
+        request_id:
+          type: string
+          description: "Request identifier if provided"
+          example: "req-12345"
+
+    FusionWeightsResponse:
+      type: object
+      required:
+        - weights
+        - state_probabilities
+        - most_likely_state
+        - timestamp
+        - processing_time_ms
+      properties:
+        weights:
+          type: object
+          properties:
+            w_ldc:
+              type: number
+              format: float
+              minimum: -1.0
+              maximum: 1.0
+              description: "Fusion weight for LDC signal"
+            w_mr:
+              type: number
+              format: float
+              minimum: -1.0
+              maximum: 1.0
+              description: "Fusion weight for Mean Reversion signal"
+            w_tsmom:
+              type: number
+              format: float
+              minimum: -1.0
+              maximum: 1.0
+              description: "Fusion weight for Time Series Momentum signal"
+          required: [w_ldc, w_mr, w_tsmom]
+          example:
+            w_ldc: 0.45
+            w_mr: 0.30
+            w_tsmom: 0.25
+        state_probabilities:
+          type: array
+          items:
+            type: number
+            format: float
+            minimum: 0.0
+            maximum: 1.0
+          description: "State probabilities used for weight computation"
+          example: [0.15, 0.65, 0.20]
+        most_likely_state:
+          type: integer
+          minimum: 0
+          description: "Index of the most likely state"
+          example: 1
+        timestamp:
+          type: integer
+          format: int64
+          description: "Response timestamp"
+          example: 1640995200
+        processing_time_ms:
+          type: number
+          format: float
+          minimum: 0.0
+          description: "Processing time in milliseconds"
+          example: 15.2
+        request_id:
+          type: string
+          description: "Request identifier if provided"
+          example: "req-12345"
+
+    PredictionResponse:
+      type: object
+      required:
+        - state_probabilities
+        - most_likely_state
+        - confidence
+        - fusion_weights
+        - timestamp
+        - processing_time_ms
+        - model_version
+      properties:
+        state_probabilities:
+          type: array
+          items:
+            type: number
+            format: float
+            minimum: 0.0
+            maximum: 1.0
+          description: "Probability distribution over HMM states"
+          example: [0.15, 0.65, 0.20]
+        most_likely_state:
+          type: integer
+          minimum: 0
+          description: "Index of the most likely state"
+          example: 1
+        confidence:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: "Confidence score (maximum probability)"
+          example: 0.65
+        fusion_weights:
+          type: object
+          properties:
+            w_ldc:
+              type: number
+              format: float
+              minimum: -1.0
+              maximum: 1.0
+            w_mr:
+              type: number
+              format: float
+              minimum: -1.0
+              maximum: 1.0
+            w_tsmom:
+              type: number
+              format: float
+              minimum: -1.0
+              maximum: 1.0
+          required: [w_ldc, w_mr, w_tsmom]
+          example:
+            w_ldc: 0.45
+            w_mr: 0.30
+            w_tsmom: 0.25
+        timestamp:
+          type: integer
+          format: int64
+          description: "Response timestamp"
+          example: 1640995200
+        processing_time_ms:
+          type: number
+          format: float
+          minimum: 0.0
+          description: "Processing time in milliseconds"
+          example: 18.7
+        model_version:
+          type: string
+          description: "Version of the HMM model used"
+          example: "v1.2.0"
+        request_id:
+          type: string
+          description: "Request identifier if provided"
+          example: "req-12345"
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - uptime
+        - version
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: "Service health status"
+          example: "healthy"
+        timestamp:
+          type: integer
+          format: int64
+          description: "Response timestamp"
+          example: 1640995200
+        uptime:
+          type: number
+          format: float
+          minimum: 0.0
+          description: "Service uptime in seconds"
+          example: 3600.5
+        version:
+          type: string
+          description: "Service version"
+          example: "1.0.0"
+
+    ReadinessResponse:
+      type: object
+      required:
+        - ready
+        - model_loaded
+        - cache_initialized
+        - checks
+        - timestamp
+      properties:
+        ready:
+          type: boolean
+          description: "Overall service readiness status"
+          example: true
+        model_loaded:
+          type: boolean
+          description: "Whether HMM model is loaded"
+          example: true
+        cache_initialized:
+          type: boolean
+          description: "Whether cache is initialized"
+          example: true
+        last_inference:
+          type: integer
+          format: int64
+          nullable: true
+          description: "Last inference timestamp"
+          example: 1640995180
+        checks:
+          type: object
+          additionalProperties:
+            type: boolean
+          description: "Individual readiness checks"
+          example:
+            inference_initialized: true
+            model_loaded: true
+            model_valid: true
+            cache_initialized: true
+            minio_connected: true
+            performance_manager_healthy: true
+        timestamp:
+          type: integer
+          format: int64
+          description: "Response timestamp"
+          example: 1640995200
+
+    DetailedHealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - uptime
+        - version
+        - memory_usage_mb
+        - cpu_usage_percent
+        - model_info
+        - cache_stats
+        - performance_stats
+        - config
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: "Service health status"
+        timestamp:
+          type: integer
+          format: int64
+          description: "Response timestamp"
+        uptime:
+          type: number
+          format: float
+          minimum: 0.0
+          description: "Service uptime in seconds"
+        version:
+          type: string
+          description: "Service version"
+        memory_usage_mb:
+          type: number
+          format: float
+          minimum: 0.0
+          description: "Memory usage in MB"
+        cpu_usage_percent:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 100.0
+          description: "CPU usage percentage"
+        model_info:
+          type: object
+          description: "Current model information"
+        cache_stats:
+          type: object
+          description: "Cache statistics"
+        performance_stats:
+          type: object
+          description: "Performance manager statistics"
+        config:
+          type: object
+          description: "Service configuration (sanitized)"
+
+    ModelReloadRequest:
+      type: object
+      properties:
+        experiment_id:
+          type: string
+          description: "Experiment ID to load (uses default if not specified)"
+          example: "production_hmm"
+        version:
+          type: string
+          description: "Model version to load"
+          default: "latest"
+          example: "1.2.0"
+        validate_model:
+          type: boolean
+          description: "Whether to validate model before activation"
+          default: true
+          example: true
+
+    ModelReloadResponse:
+      type: object
+      required:
+        - success
+        - model_info
+        - reload_time
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          description: "Whether reload was successful"
+          example: true
+        model_info:
+          type: object
+          description: "Information about loaded model"
+        reload_time:
+          type: number
+          format: float
+          minimum: 0.0
+          description: "Time taken to reload in seconds"
+          example: 2.5
+        previous_model:
+          type: object
+          nullable: true
+          description: "Previous model info"
+        timestamp:
+          type: integer
+          format: int64
+          description: "Reload timestamp"
+          example: 1640995200
+
+    CurrentModelResponse:
+      type: object
+      required:
+        - experiment_id
+        - version
+        - load_time
+        - model_info
+        - performance_stats
+        - timestamp
+      properties:
+        experiment_id:
+          type: string
+          description: "Current experiment ID"
+          example: "production_hmm"
+        version:
+          type: string
+          description: "Current model version"
+          example: "1.2.0"
+        load_time:
+          type: number
+          format: float
+          description: "Model load timestamp"
+          example: 1640995200
+        model_info:
+          type: object
+          description: "Model metadata"
+        performance_stats:
+          type: object
+          description: "Model performance statistics"
+        timestamp:
+          type: integer
+          format: int64
+          description: "Response timestamp"
+          example: 1640995200
+
+    AvailableModelsResponse:
+      type: object
+      required:
+        - models
+        - total_count
+        - timestamp
+      properties:
+        models:
+          type: array
+          items:
+            type: object
+          description: "List of available models"
+        total_count:
+          type: integer
+          minimum: 0
+          description: "Total number of available models"
+          example: 5
+        timestamp:
+          type: integer
+          format: int64
+          description: "Response timestamp"
+          example: 1640995200
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - error_code
+        - message
+        - timestamp
+      properties:
+        error:
+          type: string
+          description: "Error category"
+          example: "VALIDATION_ERROR"
+        error_code:
+          type: string
+          description: "Specific error code"
+          example: "INVALID_OBSERVATIONS"
+        message:
+          type: string
+          description: "Human-readable error message"
+          example: "Observations must contain exactly 3 numeric values"
+        timestamp:
+          type: integer
+          format: int64
+          description: "Error timestamp"
+          example: 1640995200
+        request_id:
+          type: string
+          description: "Request identifier if provided"
+          example: "req-12345"
+        details:
+          type: object
+          description: "Additional error details"
+
+  responses:
+    ValidationError:
+      description: Validation error in request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            invalid_observations:
+              summary: Invalid observation vector
+              value:
+                error: "VALIDATION_ERROR"
+                error_code: "INVALID_OBSERVATIONS"
+                message: "Observations must contain exactly 3 numeric values"
+                timestamp: 1640995200
+                details:
+                  field: "observations"
+                  provided_length: 2
+                  required_length: 3
+
+    ModelNotFound:
+      description: Model not found or not loaded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            no_model_loaded:
+              summary: No model currently loaded
+              value:
+                error: "MODEL_ERROR"
+                error_code: "NO_MODEL_LOADED"
+                message: "No model is currently loaded"
+                timestamp: 1640995200
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            internal_error:
+              summary: Internal server error
+              value:
+                error: "INTERNAL_ERROR"
+                error_code: "INTERNAL_500"
+                message: "An internal error occurred"
+                timestamp: 1640995200
+
+    ServiceUnavailable:
+      description: Service temporarily unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            service_unavailable:
+              summary: Service overloaded
+              value:
+                error: "SERVICE_UNAVAILABLE"
+                error_code: "SERVICE_OVERLOADED"
+                message: "Service is temporarily overloaded, please retry"
+                timestamp: 1640995200
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication (future implementation)
+
+tags:
+  - name: Inference
+    description: HMM inference endpoints for state probabilities and fusion weights
+  - name: Health
+    description: Health check and monitoring endpoints
+  - name: Models
+    description: Model management and information endpoints
