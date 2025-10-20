@@ -13,7 +13,6 @@ use signal_fusion::{
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{info, warn, error, Level};
-use url::Url;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -60,7 +59,7 @@ async fn basic_hmm_client_example() -> Result<()> {
         circuit_breaker_timeout: Duration::from_secs(30),
     };
 
-    let mut client = HmmClient::with_config(config)?;
+    let client = HmmClient::with_config(config)?;
 
     // Check service health
     match client.health_check().await {
@@ -228,7 +227,7 @@ async fn error_handling_example() -> Result<()> {
         circuit_breaker_timeout: Duration::from_secs(5),
     };
 
-    let mut client = HmmClient::with_config(config)?;
+    let _client = HmmClient::with_config(config)?;
 
     // Test with invalid service URL to trigger fallback
     let invalid_config = HmmClientConfig {
@@ -236,7 +235,7 @@ async fn error_handling_example() -> Result<()> {
         ..HmmClientConfig::default()
     };
 
-    let mut invalid_client = HmmClient::with_config(invalid_config)?;
+    let invalid_client = HmmClient::with_config(invalid_config.clone())?;
 
     let observations = [0.01, -0.02, 0.03];
 
@@ -377,7 +376,7 @@ async fn production_integration_example() -> Result<()> {
 async fn demonstrate_error_scenarios() -> Result<()> {
     info!("=== Error Scenario Demonstrations ===");
 
-    let mut client = HmmClient::new()?;
+    let client = HmmClient::new()?;
 
     // Test invalid observations
     let invalid_observations = [f32::NAN, 0.0, 0.0];
@@ -392,7 +391,7 @@ async fn demonstrate_error_scenarios() -> Result<()> {
         ..HmmClientConfig::default()
     };
     
-    let mut timeout_client = HmmClient::with_config(timeout_config)?;
+    let timeout_client = HmmClient::with_config(timeout_config)?;
     match timeout_client.get_state_probabilities([0.1, 0.2, 0.3], None).await {
         Ok(_) => info!("Request completed within 1ms (unlikely)"),
         Err(e) => info!("Expected timeout error: {}", e),

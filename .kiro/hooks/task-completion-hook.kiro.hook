@@ -11,6 +11,6 @@
   },
   "then": {
     "type": "askAgent",
-    "prompt": "The task spec sheet has been marked as complete. Please:\n1. Verify all the changes made are correct by reviewing the modified files\n2. Update the end of /README.md  (Implementation status) to the lastest task comleted\n3. Update current status in /.kiro/steering/product.md\n4. Create a git commit with an appropriate commit message describing the completion"
+    "prompt": "The task spec sheet has been marked as complete. Please:\n1. Verify all the changes made are correct by reviewing the modified files\n2. Update the end of /README.md  (Implementation status) to the lastest task comleted\n3. Update current status in /.kiro/steering/product.md\n4. Update the whole steering docs\n5. Create a git commit with an appropriate commit message describing the completion"
   }
 }

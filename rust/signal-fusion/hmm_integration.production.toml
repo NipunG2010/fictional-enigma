@@ -1,0 +1,46 @@
+# Production HMM Integration Configuration
+# Optimized for production deployment with stricter timeouts and higher reliability
+
+[service]
+# Production HMM service URL (update with your actual service endpoint)
+url = "http://hmm-service:8000"
+
+# Shorter timeout for production (3 seconds)
+timeout_ms = 3000
+
+# More retry attempts for production reliability
+retry_attempts = 5
+
+# Exponential backoff starting at 200ms
+retry_delay_ms = 200
+
+[circuit_breaker]
+# Lower threshold for faster failure detection
+threshold = 3
+
+# Longer timeout for production recovery
+timeout_sec = 60
+
+[cache]
+# Longer TTL for production (2 minutes)
+ttl_sec = 120
+
+# Larger cache for production workload
+max_size = 5000
+
+[fallback]
+# Always enable fallback in production
+enabled = true
+
+# Production-tuned fallback weights
+# These should be based on historical performance analysis
+w_ldc = 0.35
+w_mr = 0.30
+w_tsmom = 0.35
+
+[signal_fusion]
+# Higher threshold for production (reduce false signals)
+threshold = 0.4
+
+# Shorter cooldown for more responsive trading
+cooldown_sec = 30

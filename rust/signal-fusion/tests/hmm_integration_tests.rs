@@ -48,7 +48,7 @@ async fn test_fallback_mechanism() {
         ..Default::default()
     };
     
-    let mut client = HmmClient::with_config(config).unwrap();
+    let client = HmmClient::with_config(config).unwrap();
     
     // This should trigger fallback
     let observations = [0.1, 0.2, 0.3];
@@ -109,7 +109,7 @@ async fn test_circuit_breaker() {
         ..Default::default()
     };
     
-    let mut client = HmmClient::with_config(config).unwrap();
+    let client = HmmClient::with_config(config).unwrap();
     
     // Make requests to trigger circuit breaker
     let observations = [0.1, 0.2, 0.3];
@@ -132,11 +132,141 @@ async fn test_circuit_breaker() {
     assert!(result3.is_err());
     
     match result3.unwrap_err() {
-        HmmClientError::ServiceUnavailable { .. } => {
+        HmmClientError::CircuitBreakerOpen { .. } => {
             // Expected - circuit breaker is open
         }
-        other => panic!("Expected ServiceUnavailable error, got: {:?}", other),
+        HmmClientError::ServiceUnavailable { .. } => {
+            // Also acceptable - may happen if circuit breaker just opened
+        }
+        other => panic!("Expected CircuitBreakerOpen or ServiceUnavailable error, got: {:?}", other),
     }
+    
+    // Verify metrics
+    let metrics = client.get_circuit_breaker_metrics();
+    assert_eq!(metrics.circuit_breaker_opens, 1);
+    assert!(metrics.rejected_requests > 0);
+}
+
+/// Test circuit breaker timeout and half-open state
+#[tokio::test]
+async fn test_circuit_breaker_timeout_recovery() {
+    let config = HmmClientConfig {
+        base_url: "http://invalid-host:9999".parse().unwrap(),
+        timeout: Duration::from_millis(100),
+        retry_attempts: 1,
+        enable_fallback: false,
+        circuit_breaker_threshold: 2,
+        circuit_breaker_timeout: Duration::from_millis(300),
+        ..Default::default()
+    };
+    
+    let client = HmmClient::with_config(config).unwrap();
+    let observations = [0.1, 0.2, 0.3];
+    
+    // Open the circuit breaker
+    let _ = client.get_state_probabilities(observations, None).await;
+    let _ = client.get_state_probabilities(observations, None).await;
+    
+    let (state, _) = client.get_circuit_breaker_status();
+    assert_eq!(state, "open");
+    
+    // Wait for timeout to allow transition to half-open
+    tokio::time::sleep(Duration::from_millis(350)).await;
+    
+    // Next request should attempt in half-open state
+    let result = client.get_state_probabilities(observations, None).await;
+    assert!(result.is_err()); // Will still fail since service is invalid
+    
+    // Should have transitioned to half-open and back to open
+    let (state, _) = client.get_circuit_breaker_status();
+    assert_eq!(state, "open");
+    
+    // Verify metrics show half-open attempt
+    let metrics = client.get_circuit_breaker_metrics();
+    assert_eq!(metrics.half_open_attempts, 1);
+    assert_eq!(metrics.circuit_breaker_opens, 2); // Initial + after half-open failure
+}
+
+/// Test circuit breaker state transitions with detailed logging
+#[tokio::test]
+async fn test_circuit_breaker_state_transitions() {
+    let config = HmmClientConfig {
+        base_url: "http://invalid-host:9999".parse().unwrap(),
+        timeout: Duration::from_millis(100),
+        retry_attempts: 1,
+        enable_fallback: false,
+        circuit_breaker_threshold: 3,
+        circuit_breaker_timeout: Duration::from_millis(200),
+        ..Default::default()
+    };
+    
+    let client = HmmClient::with_config(config).unwrap();
+    let observations = [0.1, 0.2, 0.3];
+    
+    // Initial state should be closed
+    let (state, count) = client.get_circuit_breaker_status();
+    assert_eq!(state, "closed");
+    assert_eq!(count, 0);
+    
+    // First failure - should remain closed
+    let _ = client.get_state_probabilities(observations, None).await;
+    let (state, count) = client.get_circuit_breaker_status();
+    assert_eq!(state, "closed");
+    assert_eq!(count, 1);
+    
+    // Second failure - should remain closed
+    let _ = client.get_state_probabilities(observations, None).await;
+    let (state, count) = client.get_circuit_breaker_status();
+    assert_eq!(state, "closed");
+    assert_eq!(count, 2);
+    
+    // Third failure - should open
+    let _ = client.get_state_probabilities(observations, None).await;
+    let (state, count) = client.get_circuit_breaker_status();
+    assert_eq!(state, "open");
+    assert_eq!(count, 3);
+    
+    // Verify metrics
+    let metrics = client.get_circuit_breaker_metrics();
+    assert_eq!(metrics.failed_requests, 3);
+    assert_eq!(metrics.circuit_breaker_opens, 1);
+}
+
+/// Test circuit breaker metrics tracking
+#[tokio::test]
+async fn test_circuit_breaker_metrics_tracking() {
+    let config = HmmClientConfig {
+        base_url: "http://invalid-host:9999".parse().unwrap(),
+        timeout: Duration::from_millis(100),
+        retry_attempts: 1,
+        enable_fallback: false,
+        circuit_breaker_threshold: 2,
+        circuit_breaker_timeout: Duration::from_millis(200),
+        ..Default::default()
+    };
+    
+    let client = HmmClient::with_config(config).unwrap();
+    let observations = [0.1, 0.2, 0.3];
+    
+    // Make several requests to trigger circuit breaker
+    let _ = client.get_state_probabilities(observations, None).await;
+    let _ = client.get_state_probabilities(observations, None).await;
+    
+    // Circuit should be open now
+    let (state, _) = client.get_circuit_breaker_status();
+    assert_eq!(state, "open");
+    
+    // Try more requests while open (should be rejected)
+    let _ = client.get_state_probabilities(observations, None).await;
+    let _ = client.get_state_probabilities(observations, None).await;
+    
+    // Check metrics
+    let metrics = client.get_circuit_breaker_metrics();
+    assert_eq!(metrics.total_requests, 2); // Only first 2 counted
+    assert_eq!(metrics.failed_requests, 2);
+    assert_eq!(metrics.successful_requests, 0);
+    assert_eq!(metrics.circuit_breaker_opens, 1);
+    assert!(metrics.rejected_requests >= 2); // At least 2 rejected
 }
 
 /// Test request serialization and validation
@@ -196,7 +326,7 @@ async fn test_error_handling() {
         ..Default::default()
     };
     
-    let mut client = HmmClient::with_config(config).unwrap();
+    let client = HmmClient::with_config(config).unwrap();
     
     let observations = [0.1, 0.2, 0.3];
     let result = client.get_state_probabilities(observations, None).await;
@@ -261,7 +391,7 @@ async fn test_real_hmm_service_integration() {
 #[tokio::test]
 #[ignore] // Ignored by default
 async fn test_service_health_checks() {
-    let mut client = HmmClient::new().unwrap();
+    let client = HmmClient::new().unwrap();
     
     // Test health check
     match client.health_check().await {
@@ -338,4 +468,269 @@ async fn test_performance_benchmark() {
     // Verify average latency is reasonable (should be < 50ms for local service)
     assert!(avg_duration < Duration::from_millis(100), 
             "Average latency too high: {:?}", avg_duration);
+}
+
+/// Test cache integration with fallback
+#[tokio::test]
+async fn test_cache_integration_with_fallback() {
+    let config = HmmClientConfig {
+        base_url: "http://invalid-host:9999".parse().unwrap(),
+        timeout: Duration::from_millis(100),
+        retry_attempts: 1,
+        enable_fallback: true,
+        fallback_weights: FusionWeights {
+            w_ldc: 0.4,
+            w_mr: 0.3,
+            w_tsmom: 0.3,
+        },
+        ..Default::default()
+    };
+    
+    let mut integration = HmmIntegration::with_config(config).unwrap();
+    
+    let signals = SignalComponents {
+        s_ldc: 0.05,
+        s_mr: -0.02,
+        s_tsmom: 0.08,
+    };
+    
+    // First request - should use fallback and cache it
+    let weights1 = integration.get_fusion_weights_for_signals(&signals).await;
+    assert!(weights1.is_ok());
+    
+    // Check cache stats - should have 1 miss (no cache hit on first request)
+    let stats = integration.get_cache_stats();
+    assert_eq!(stats.misses, 1);
+    
+    // Second request with same signals - should hit cache
+    let weights2 = integration.get_fusion_weights_for_signals(&signals).await;
+    assert!(weights2.is_ok());
+    
+    // Check cache stats - should have 1 hit now
+    let stats = integration.get_cache_stats();
+    assert_eq!(stats.hits, 1);
+    assert_eq!(stats.misses, 1);
+    assert_eq!(stats.size, 1);
+    
+    // Verify weights are the same
+    let w1 = weights1.unwrap();
+    let w2 = weights2.unwrap();
+    assert_eq!(w1.w_ldc, w2.w_ldc);
+    assert_eq!(w1.w_mr, w2.w_mr);
+    assert_eq!(w1.w_tsmom, w2.w_tsmom);
+}
+
+/// Test cache with different observations
+#[tokio::test]
+async fn test_cache_with_different_observations() {
+    let config = HmmClientConfig {
+        base_url: "http://invalid-host:9999".parse().unwrap(),
+        timeout: Duration::from_millis(100),
+        retry_attempts: 1,
+        enable_fallback: true,
+        fallback_weights: FusionWeights {
+            w_ldc: 0.4,
+            w_mr: 0.3,
+            w_tsmom: 0.3,
+        },
+        ..Default::default()
+    };
+    
+    let mut integration = HmmIntegration::with_config(config).unwrap();
+    
+    // Request with first set of signals
+    let signals1 = SignalComponents {
+        s_ldc: 0.05,
+        s_mr: -0.02,
+        s_tsmom: 0.08,
+    };
+    let _ = integration.get_fusion_weights_for_signals(&signals1).await;
+    
+    // Request with second set of signals
+    let signals2 = SignalComponents {
+        s_ldc: 0.10,
+        s_mr: 0.03,
+        s_tsmom: -0.05,
+    };
+    let _ = integration.get_fusion_weights_for_signals(&signals2).await;
+    
+    // Check cache stats - should have 2 misses, 0 hits, 2 entries
+    let stats = integration.get_cache_stats();
+    assert_eq!(stats.misses, 2);
+    assert_eq!(stats.hits, 0);
+    assert_eq!(stats.size, 2);
+    
+    // Request first signals again - should hit cache
+    let _ = integration.get_fusion_weights_for_signals(&signals1).await;
+    
+    let stats = integration.get_cache_stats();
+    assert_eq!(stats.hits, 1);
+    assert_eq!(stats.misses, 2);
+}
+
+/// Test cache cleanup functionality
+#[tokio::test]
+async fn test_cache_cleanup() {
+    let config = HmmClientConfig {
+        base_url: "http://invalid-host:9999".parse().unwrap(),
+        timeout: Duration::from_millis(100),
+        retry_attempts: 1,
+        enable_fallback: true,
+        fallback_weights: FusionWeights {
+            w_ldc: 0.4,
+            w_mr: 0.3,
+            w_tsmom: 0.3,
+        },
+        ..Default::default()
+    };
+    
+    // Create integration with short TTL for testing
+    let mut integration = HmmIntegration::with_config_and_cache(
+        config,
+        Duration::from_millis(100), // 100ms TTL
+        1000,
+    ).unwrap();
+    
+    let signals = SignalComponents {
+        s_ldc: 0.05,
+        s_mr: -0.02,
+        s_tsmom: 0.08,
+    };
+    
+    // Add entry to cache
+    let _ = integration.get_fusion_weights_for_signals(&signals).await;
+    assert_eq!(integration.get_cache_stats().size, 1);
+    
+    // Wait for TTL to expire
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    
+    // Manually trigger cleanup
+    integration.cleanup_cache();
+    
+    // Cache should be empty now
+    let stats = integration.get_cache_stats();
+    assert_eq!(stats.size, 0);
+    assert_eq!(stats.evictions, 1);
+}
+
+/// Test cache clear functionality
+#[tokio::test]
+async fn test_cache_clear() {
+    let config = HmmClientConfig {
+        base_url: "http://invalid-host:9999".parse().unwrap(),
+        timeout: Duration::from_millis(100),
+        retry_attempts: 1,
+        enable_fallback: true,
+        fallback_weights: FusionWeights {
+            w_ldc: 0.4,
+            w_mr: 0.3,
+            w_tsmom: 0.3,
+        },
+        ..Default::default()
+    };
+    
+    let mut integration = HmmIntegration::with_config(config).unwrap();
+    
+    // Add multiple entries
+    for i in 0..5 {
+        let signals = SignalComponents {
+            s_ldc: 0.01 * i as f32,
+            s_mr: 0.02 * i as f32,
+            s_tsmom: 0.03 * i as f32,
+        };
+        let _ = integration.get_fusion_weights_for_signals(&signals).await;
+    }
+    
+    assert_eq!(integration.get_cache_stats().size, 5);
+    
+    // Clear cache
+    integration.clear_cache();
+    
+    // Cache should be empty
+    assert_eq!(integration.get_cache_stats().size, 0);
+}
+
+/// Test cache hit rate calculation
+#[tokio::test]
+async fn test_cache_hit_rate() {
+    let config = HmmClientConfig {
+        base_url: "http://invalid-host:9999".parse().unwrap(),
+        timeout: Duration::from_millis(100),
+        retry_attempts: 1,
+        enable_fallback: true,
+        fallback_weights: FusionWeights {
+            w_ldc: 0.4,
+            w_mr: 0.3,
+            w_tsmom: 0.3,
+        },
+        ..Default::default()
+    };
+    
+    let mut integration = HmmIntegration::with_config(config).unwrap();
+    
+    let signals = SignalComponents {
+        s_ldc: 0.05,
+        s_mr: -0.02,
+        s_tsmom: 0.08,
+    };
+    
+    // First request - miss
+    let _ = integration.get_fusion_weights_for_signals(&signals).await;
+    
+    // Next 3 requests - hits
+    for _ in 0..3 {
+        let _ = integration.get_fusion_weights_for_signals(&signals).await;
+    }
+    
+    let stats = integration.get_cache_stats();
+    assert_eq!(stats.hits, 3);
+    assert_eq!(stats.misses, 1);
+    assert_eq!(stats.hit_rate, 0.75); // 3 hits out of 4 total requests
+}
+
+/// Test cache with real HMM service (requires running service)
+#[tokio::test]
+#[ignore] // Ignored by default
+async fn test_cache_with_real_service() {
+    let mut integration = HmmIntegration::new().unwrap();
+    
+    if !integration.is_service_ready().await {
+        println!("HMM service not ready, skipping cache integration test");
+        return;
+    }
+    
+    let signals = SignalComponents {
+        s_ldc: 0.015,
+        s_mr: -0.008,
+        s_tsmom: 0.022,
+    };
+    
+    // First request - should miss cache and fetch from service
+    let start = std::time::Instant::now();
+    let weights1 = integration.get_fusion_weights_for_signals(&signals).await;
+    let first_duration = start.elapsed();
+    assert!(weights1.is_ok());
+    
+    let stats = integration.get_cache_stats();
+    assert_eq!(stats.misses, 1);
+    assert_eq!(stats.hits, 0);
+    
+    // Second request - should hit cache (much faster)
+    let start = std::time::Instant::now();
+    let weights2 = integration.get_fusion_weights_for_signals(&signals).await;
+    let second_duration = start.elapsed();
+    assert!(weights2.is_ok());
+    
+    let stats = integration.get_cache_stats();
+    assert_eq!(stats.hits, 1);
+    assert_eq!(stats.misses, 1);
+    
+    // Cache hit should be significantly faster
+    println!("First request (cache miss): {:?}", first_duration);
+    println!("Second request (cache hit): {:?}", second_duration);
+    println!("Cache hit rate: {:.2}%", stats.hit_rate * 100.0);
+    
+    // Verify cache hit is faster (should be < 1ms vs potentially 10-50ms for service call)
+    assert!(second_duration < first_duration / 2, 
+            "Cache hit should be significantly faster than service call");
 }

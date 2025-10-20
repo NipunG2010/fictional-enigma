@@ -1,0 +1,45 @@
+# Example HMM Integration Configuration
+# Copy this file to hmm_integration.toml and customize for your environment
+
+[service]
+# Base URL of the HMM microservice
+url = "http://localhost:8000"
+
+# Request timeout in milliseconds
+timeout_ms = 5000
+
+# Number of retry attempts for failed requests
+retry_attempts = 3
+
+# Delay between retries in milliseconds
+retry_delay_ms = 100
+
+[circuit_breaker]
+# Number of consecutive failures before opening circuit
+threshold = 5
+
+# Timeout in seconds before attempting recovery
+timeout_sec = 30
+
+[cache]
+# Time-to-live for cache entries in seconds
+ttl_sec = 60
+
+# Maximum number of cache entries
+max_size = 1000
+
+[fallback]
+# Enable fallback to static weights when service is unavailable
+enabled = true
+
+# Fallback fusion weights (must sum to approximately 1.0)
+w_ldc = 0.33
+w_mr = 0.33
+w_tsmom = 0.34
+
+[signal_fusion]
+# Minimum signal strength threshold (0.0 to 1.0)
+threshold = 0.3
+
+# Cooldown period between signals in seconds
+cooldown_sec = 60

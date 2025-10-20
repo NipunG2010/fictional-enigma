@@ -6,6 +6,19 @@ This document provides comprehensive guidance on integrating the Rust inference 
 
 The HMM microservice provides Hidden Markov Model inference capabilities that enable regime-aware signal fusion. The Rust client library provides a robust HTTP client with comprehensive error handling, retry logic, circuit breaker patterns, and fallback mechanisms.
 
+## Documentation
+
+Complete documentation is available in the following guides:
+
+- **[API Reference](docs/API_REFERENCE.md)** - Complete API documentation for all types and methods
+- **[Configuration Guide](CONFIG.md)** - Detailed configuration options and examples
+- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Performance Tuning](docs/PERFORMANCE_TUNING.md)** - Optimization strategies and benchmarking
+- **[Circuit Breaker](docs/CIRCUIT_BREAKER.md)** - Circuit breaker pattern implementation
+- **[Monitoring & Metrics](docs/MONITORING_METRICS.md)** - Metrics collection and monitoring
+- **[Error Handling Guide](ERROR_HANDLING_GUIDE.md)** - Error types and handling strategies
+- **[Signal Fusion Guide](SIGNAL_FUSION_GUIDE.md)** - Signal fusion implementation details
+
 ## Quick Start
 
 ### Basic Usage
