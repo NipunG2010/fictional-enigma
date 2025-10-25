@@ -187,6 +187,9 @@ async fn signal_fusion_with_hmm_example() -> Result<()> {
             timestamp,
             "BTCUSDT",
             "hmm_v2.1.0",
+            format!("hmm-correlation-{}", timestamp),
+            format!("feature-checksum-{}", timestamp),
+            latency_ms,
         )? {
             Some(trading_signal) => {
                 info!("Generated Trading Signal:");
@@ -341,6 +344,9 @@ async fn production_integration_example() -> Result<()> {
             timestamp,
             "BTCUSDT",
             "production_v1.0",
+            format!("prod-correlation-{}", timestamp),
+            format!("prod-checksum-{}", timestamp),
+            processing_latency_ms,
         )? {
             Some(signal) => {
                 info!("TRADING SIGNAL: {} {} with strength {:.3} (confidence: {:.3})", 

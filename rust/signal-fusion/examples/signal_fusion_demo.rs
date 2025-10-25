@@ -25,7 +25,16 @@ fn main() {
         w_tsmom: 0.2,
     };
 
-    match fusion.fuse_signals(components, weights, 1000, "BTCUSDT", "v1.0") {
+    match fusion.fuse_signals(
+        components, 
+        weights, 
+        1000, 
+        "BTCUSDT", 
+        "v1.0",
+        "demo-correlation-1".to_string(),
+        "demo-checksum-1".to_string(),
+        25,
+    ) {
         Ok(Some(signal)) => {
             println!("✓ Generated signal:");
             println!("  Side: {}", signal.side);
@@ -51,7 +60,16 @@ fn main() {
         w_tsmom: 0.34,
     };
 
-    match fusion.fuse_signals(components, weights, 1030, "BTCUSDT", "v1.0") {
+    match fusion.fuse_signals(
+        components, 
+        weights, 
+        1030, 
+        "BTCUSDT", 
+        "v1.0",
+        "demo-correlation-2".to_string(),
+        "demo-checksum-2".to_string(),
+        20,
+    ) {
         Ok(Some(signal)) => {
             println!("✓ Generated signal: {}\n", signal.side);
         }
@@ -72,7 +90,16 @@ fn main() {
         w_tsmom: 0.2,
     };
 
-    match fusion.fuse_signals(components, weights, 1040, "BTCUSDT", "v1.0") {
+    match fusion.fuse_signals(
+        components, 
+        weights, 
+        1040, 
+        "BTCUSDT", 
+        "v1.0",
+        "demo-correlation-3".to_string(),
+        "demo-checksum-3".to_string(),
+        30,
+    ) {
         Ok(Some(signal)) => {
             println!("✓ Generated signal: {}\n", signal.side);
         }
@@ -93,7 +120,16 @@ fn main() {
         w_tsmom: 0.2,
     };
 
-    match fusion.fuse_signals(components, weights, 1100, "BTCUSDT", "v1.0") {
+    match fusion.fuse_signals(
+        components, 
+        weights, 
+        1100, 
+        "BTCUSDT", 
+        "v1.0",
+        "demo-correlation-4".to_string(),
+        "demo-checksum-4".to_string(),
+        35,
+    ) {
         Ok(Some(signal)) => {
             println!("✓ Generated signal: {}\n", signal.side);
         }
@@ -114,7 +150,16 @@ fn main() {
         w_tsmom: 0.2,
     };
 
-    match fusion.fuse_signals(components, weights, 1200, "BTCUSDT", "v1.0") {
+    match fusion.fuse_signals(
+        components, 
+        weights, 
+        1200, 
+        "BTCUSDT", 
+        "v1.0",
+        "demo-correlation-5".to_string(),
+        "demo-checksum-5".to_string(),
+        40,
+    ) {
         Ok(Some(signal)) => {
             println!("✓ Generated signal:");
             println!("  Side: {}", signal.side);

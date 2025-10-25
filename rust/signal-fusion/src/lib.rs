@@ -6,11 +6,15 @@ pub mod config;
 pub mod hmm_client;
 pub mod weight_cache;
 pub mod metrics;
+pub mod emission;
 
 // Re-export commonly used types
 pub use config::HmmIntegrationConfig;
 pub use weight_cache::{WeightCache, CacheStats};
 pub use metrics::{MetricsCollector, HmmIntegrationMetrics, MetricsFormat, export_metrics};
+pub use emission::{SignalEmissionError, Result as EmissionResult};
+pub use emission::publisher::{PublisherTrait, PublishResult, HealthStatus, HealthLevel, RetryConfig};
+pub use emission::validation::{SignalValidator, ValidationConfig, ValidationError};
 
 // Signal validation constants
 const SIGNAL_MIN: f32 = -1.0;
@@ -86,16 +90,236 @@ impl FusionWeights {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SignalSide {
+    #[serde(rename = "BUY")]
+    Buy,
+    #[serde(rename = "SELL")]
+    Sell,
+    #[serde(rename = "HOLD")]
+    Hold,
+}
+
+impl std::fmt::Display for SignalSide {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SignalSide::Buy => write!(f, "BUY"),
+            SignalSide::Sell => write!(f, "SELL"),
+            SignalSide::Hold => write!(f, "HOLD"),
+        }
+    }
+}
+
+impl std::str::FromStr for SignalSide {
+    type Err = anyhow::Error;
+    
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "BUY" => Ok(SignalSide::Buy),
+            "SELL" => Ok(SignalSide::Sell),
+            "HOLD" => Ok(SignalSide::Hold),
+            _ => bail!("Invalid signal side: {}", s),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradingSignal {
+    // Core signal data
     pub timestamp: i64,
     pub symbol: String,
-    pub side: String, // "BUY", "SELL", "HOLD"
+    pub side: SignalSide,
     pub strength: f32, // -1.0 to 1.0
-    pub confidence: f32,
+    pub confidence: f32, // 0.0 to 1.0
+    
+    // Signal components and weights
     pub components: SignalComponents,
     pub weights: FusionWeights,
+    
+    // Model metadata
     pub model_version: String,
+    
+    // Audit fields for traceability
+    pub correlation_id: String,
+    pub feature_checksum: String,
+    pub generation_latency_ms: u64,
+    
+    // Optional HMM-specific fields
+    pub hmm_state_probabilities: Option<Vec<f32>>,
+    pub fallback_used: bool,
+}
+
+impl TradingSignal {
+    /// Create a new TradingSignal with all required fields
+    pub fn new(
+        timestamp: i64,
+        symbol: String,
+        side: SignalSide,
+        strength: f32,
+        confidence: f32,
+        components: SignalComponents,
+        weights: FusionWeights,
+        model_version: String,
+        correlation_id: String,
+        feature_checksum: String,
+        generation_latency_ms: u64,
+    ) -> Self {
+        Self {
+            timestamp,
+            symbol,
+            side,
+            strength,
+            confidence,
+            components,
+            weights,
+            model_version,
+            correlation_id,
+            feature_checksum,
+            generation_latency_ms,
+            hmm_state_probabilities: None,
+            fallback_used: false,
+        }
+    }
+    
+    /// Create a TradingSignal with HMM-specific fields
+    pub fn with_hmm_data(
+        mut self,
+        state_probabilities: Vec<f32>,
+        fallback_used: bool,
+    ) -> Self {
+        self.hmm_state_probabilities = Some(state_probabilities);
+        self.fallback_used = fallback_used;
+        self
+    }
+    
+    /// Validate the trading signal structure and content
+    pub fn validate(&self) -> Result<()> {
+        // Validate timestamp (not too far in past or future)
+        let now = chrono::Utc::now().timestamp();
+        let max_age = 3600; // 1 hour
+        let max_future = 300; // 5 minutes
+        
+        if self.timestamp < now - max_age {
+            bail!("Signal timestamp too old: {} (current: {})", self.timestamp, now);
+        }
+        
+        if self.timestamp > now + max_future {
+            bail!("Signal timestamp too far in future: {} (current: {})", self.timestamp, now);
+        }
+        
+        // Validate symbol format (uppercase, alphanumeric)
+        if self.symbol.is_empty() {
+            bail!("Symbol cannot be empty");
+        }
+        
+        if !self.symbol.chars().all(|c| c.is_ascii_alphanumeric()) {
+            bail!("Symbol must contain only alphanumeric characters: {}", self.symbol);
+        }
+        
+        if self.symbol != self.symbol.to_uppercase() {
+            bail!("Symbol must be uppercase: {}", self.symbol);
+        }
+        
+        // Validate strength range
+        if !self.strength.is_finite() || self.strength < SIGNAL_MIN || self.strength > SIGNAL_MAX {
+            bail!("Strength out of range [{}, {}]: {}", SIGNAL_MIN, SIGNAL_MAX, self.strength);
+        }
+        
+        // Validate confidence range
+        if !self.confidence.is_finite() || self.confidence < 0.0 || self.confidence > 1.0 {
+            bail!("Confidence out of range [0.0, 1.0]: {}", self.confidence);
+        }
+        
+        // Validate components
+        self.components.validate()?;
+        
+        // Validate weights
+        self.weights.validate()?;
+        
+        // Validate model version format
+        if self.model_version.is_empty() {
+            bail!("Model version cannot be empty");
+        }
+        
+        // Validate correlation ID format (should be non-empty)
+        if self.correlation_id.is_empty() {
+            bail!("Correlation ID cannot be empty");
+        }
+        
+        // Validate feature checksum format (should be non-empty)
+        if self.feature_checksum.is_empty() {
+            bail!("Feature checksum cannot be empty");
+        }
+        
+        // Validate HMM state probabilities if present
+        if let Some(ref probs) = self.hmm_state_probabilities {
+            if probs.is_empty() {
+                bail!("HMM state probabilities cannot be empty if provided");
+            }
+            
+            for (i, &prob) in probs.iter().enumerate() {
+                if !prob.is_finite() || prob < 0.0 || prob > 1.0 {
+                    bail!("HMM state probability {} out of range [0.0, 1.0]: {}", i, prob);
+                }
+            }
+            
+            // Check that probabilities sum to approximately 1.0
+            let sum: f32 = probs.iter().sum();
+            if (sum - 1.0).abs() > 0.01 {
+                bail!("HMM state probabilities should sum to 1.0, got: {}", sum);
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Validate signal consistency (side matches strength sign)
+    pub fn validate_consistency(&self) -> Result<()> {
+        match self.side {
+            SignalSide::Buy => {
+                if self.strength <= 0.0 {
+                    bail!("BUY signal should have positive strength, got: {}", self.strength);
+                }
+            }
+            SignalSide::Sell => {
+                if self.strength >= 0.0 {
+                    bail!("SELL signal should have negative strength, got: {}", self.strength);
+                }
+            }
+            SignalSide::Hold => {
+                // HOLD signals can have any strength, but typically should be near zero
+                if self.strength.abs() > 0.5 {
+                    warn!("HOLD signal has high strength: {}", self.strength);
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Get the signal as a JSON string for serialization
+    pub fn to_json(&self) -> Result<String> {
+        serde_json::to_string(self).map_err(|e| anyhow::anyhow!("Failed to serialize signal: {}", e))
+    }
+    
+    /// Create a signal from JSON string
+    pub fn from_json(json: &str) -> Result<Self> {
+        serde_json::from_str(json).map_err(|e| anyhow::anyhow!("Failed to deserialize signal: {}", e))
+    }
+    
+    /// Get a compact string representation for logging
+    pub fn to_compact_string(&self) -> String {
+        format!(
+            "{}@{}: {} {} str={:.3} conf={:.3} [{}]",
+            self.symbol,
+            self.timestamp,
+            self.side,
+            self.model_version,
+            self.strength,
+            self.confidence,
+            &self.correlation_id[..8.min(self.correlation_id.len())]
+        )
+    }
 }
 
 pub struct SignalFusion {
@@ -131,6 +355,9 @@ impl SignalFusion {
         timestamp: i64,
         symbol: &str,
         model_version: &str,
+        correlation_id: String,
+        feature_checksum: String,
+        generation_latency_ms: u64,
     ) -> Result<Option<TradingSignal>> {
         // Validate input signals (Requirement 5.3)
         if let Err(e) = components.validate() {
@@ -195,29 +422,33 @@ impl SignalFusion {
         }
         
         // Determine side
-        let side = if fused_signal > 0.0 { "BUY" } else { "SELL" };
+        let side = if fused_signal > 0.0 { SignalSide::Buy } else { SignalSide::Sell };
         
         // Calculate confidence (normalized to [0, 1])
         let confidence = fused_signal.abs().min(1.0);
         
         // Log fusion operation (Requirement 5.5)
         info!(
-            "Generated {} signal for {}: strength={:.4}, confidence={:.4}, components=[LDC:{:.3}, MR:{:.3}, TSMOM:{:.3}], weights=[LDC:{:.3}, MR:{:.3}, TSMOM:{:.3}]",
+            "Generated {} signal for {}: strength={:.4}, confidence={:.4}, components=[LDC:{:.3}, MR:{:.3}, TSMOM:{:.3}], weights=[LDC:{:.3}, MR:{:.3}, TSMOM:{:.3}], correlation_id={}",
             side, symbol, fused_signal, confidence,
             components.s_ldc, components.s_mr, components.s_tsmom,
-            final_weights.w_ldc, final_weights.w_mr, final_weights.w_tsmom
+            final_weights.w_ldc, final_weights.w_mr, final_weights.w_tsmom,
+            correlation_id
         );
 
-        let signal = TradingSignal {
+        let signal = TradingSignal::new(
             timestamp,
-            symbol: symbol.to_string(),
-            side: side.to_string(),
-            strength: fused_signal,
+            symbol.to_string(),
+            side,
+            fused_signal,
             confidence,
             components,
-            weights: final_weights,
-            model_version: model_version.to_string(),
-        };
+            final_weights,
+            model_version.to_string(),
+            correlation_id,
+            feature_checksum,
+            generation_latency_ms,
+        );
         
         self.last_signal_time = Some(timestamp);
         
@@ -282,12 +513,18 @@ mod tests {
             1000,
             "BTCUSDT",
             "v1.0",
+            "test-correlation-123".to_string(),
+            "feature-checksum-abc".to_string(),
+            50,
         ).unwrap();
         
         assert!(result.is_some());
         let signal = result.unwrap();
         assert_eq!(signal.symbol, "BTCUSDT");
-        assert_eq!(signal.side, "BUY");
+        assert_eq!(signal.side, SignalSide::Buy);
+        assert_eq!(signal.correlation_id, "test-correlation-123");
+        assert_eq!(signal.feature_checksum, "feature-checksum-abc");
+        assert_eq!(signal.generation_latency_ms, 50);
     }
     
     #[test]
@@ -312,6 +549,9 @@ mod tests {
             1000,
             "BTCUSDT",
             "v1.0",
+            "test-correlation-456".to_string(),
+            "feature-checksum-def".to_string(),
+            25,
         ).unwrap();
         
         assert!(result.is_none());
@@ -440,6 +680,9 @@ mod tests {
             1000,
             "BTCUSDT",
             "v1.0",
+            "test-correlation-1".to_string(),
+            "checksum-1".to_string(),
+            30,
         ).unwrap();
         assert!(result1.is_some());
         
@@ -450,6 +693,9 @@ mod tests {
             1030, // 30 seconds later, within 60s cooldown
             "BTCUSDT",
             "v1.0",
+            "test-correlation-2".to_string(),
+            "checksum-2".to_string(),
+            25,
         ).unwrap();
         assert!(result2.is_none());
         
@@ -460,6 +706,9 @@ mod tests {
             1070, // 70 seconds after first, beyond cooldown
             "BTCUSDT",
             "v1.0",
+            "test-correlation-3".to_string(),
+            "checksum-3".to_string(),
+            35,
         ).unwrap();
         assert!(result3.is_some());
     }
@@ -484,7 +733,16 @@ mod tests {
         };
         
         // Generate a signal
-        fusion.fuse_signals(components, weights, 1000, "BTCUSDT", "v1.0").unwrap();
+        fusion.fuse_signals(
+            components, 
+            weights, 
+            1000, 
+            "BTCUSDT", 
+            "v1.0",
+            "test-correlation".to_string(),
+            "checksum".to_string(),
+            20,
+        ).unwrap();
         
         // Should be in cooldown
         assert!(fusion.is_in_cooldown(1030));
@@ -515,6 +773,9 @@ mod tests {
             1000,
             "BTCUSDT",
             "v1.0",
+            "test-correlation".to_string(),
+            "checksum".to_string(),
+            30,
         );
         
         assert!(result.is_err());
@@ -542,6 +803,9 @@ mod tests {
             1000,
             "BTCUSDT",
             "v1.0",
+            "test-correlation".to_string(),
+            "checksum".to_string(),
+            30,
         );
         
         assert!(result.is_err());
@@ -569,6 +833,9 @@ mod tests {
             1000,
             "BTCUSDT",
             "v1.0",
+            "test-correlation".to_string(),
+            "checksum".to_string(),
+            30,
         ).unwrap();
         
         assert!(result.is_some());
@@ -602,11 +869,297 @@ mod tests {
             1000,
             "BTCUSDT",
             "v1.0",
+            "test-correlation".to_string(),
+            "checksum".to_string(),
+            30,
         ).unwrap();
         
         assert!(result.is_some());
         let signal = result.unwrap();
-        assert_eq!(signal.side, "SELL");
+        assert_eq!(signal.side, SignalSide::Sell);
         assert!(signal.strength < 0.0);
+    }
+
+    #[test]
+    fn test_signal_side_enum() {
+        assert_eq!(SignalSide::Buy.to_string(), "BUY");
+        assert_eq!(SignalSide::Sell.to_string(), "SELL");
+        assert_eq!(SignalSide::Hold.to_string(), "HOLD");
+        
+        assert_eq!("BUY".parse::<SignalSide>().unwrap(), SignalSide::Buy);
+        assert_eq!("SELL".parse::<SignalSide>().unwrap(), SignalSide::Sell);
+        assert_eq!("HOLD".parse::<SignalSide>().unwrap(), SignalSide::Hold);
+        assert_eq!("buy".parse::<SignalSide>().unwrap(), SignalSide::Buy);
+        
+        assert!("INVALID".parse::<SignalSide>().is_err());
+    }
+
+    #[test]
+    fn test_trading_signal_validation() {
+        let now = chrono::Utc::now().timestamp();
+        
+        let components = SignalComponents {
+            s_ldc: 0.5,
+            s_mr: 0.3,
+            s_tsmom: 0.2,
+        };
+        
+        let weights = FusionWeights {
+            w_ldc: 0.5,
+            w_mr: 0.3,
+            w_tsmom: 0.2,
+        };
+        
+        // Valid signal
+        let signal = TradingSignal::new(
+            now,
+            "BTCUSDT".to_string(),
+            SignalSide::Buy,
+            0.75,
+            0.85,
+            components.clone(),
+            weights.clone(),
+            "v1.0".to_string(),
+            "correlation-123".to_string(),
+            "checksum-abc".to_string(),
+            50,
+        );
+        
+        assert!(signal.validate().is_ok());
+        assert!(signal.validate_consistency().is_ok());
+        
+        // Invalid timestamp (too old)
+        let old_signal = TradingSignal::new(
+            now - 7200, // 2 hours ago
+            "BTCUSDT".to_string(),
+            SignalSide::Buy,
+            0.75,
+            0.85,
+            components.clone(),
+            weights.clone(),
+            "v1.0".to_string(),
+            "correlation-123".to_string(),
+            "checksum-abc".to_string(),
+            50,
+        );
+        
+        assert!(old_signal.validate().is_err());
+        
+        // Invalid symbol (lowercase)
+        let invalid_symbol_signal = TradingSignal::new(
+            now,
+            "btcusdt".to_string(),
+            SignalSide::Buy,
+            0.75,
+            0.85,
+            components.clone(),
+            weights.clone(),
+            "v1.0".to_string(),
+            "correlation-123".to_string(),
+            "checksum-abc".to_string(),
+            50,
+        );
+        
+        assert!(invalid_symbol_signal.validate().is_err());
+        
+        // Invalid strength range
+        let invalid_strength_signal = TradingSignal::new(
+            now,
+            "BTCUSDT".to_string(),
+            SignalSide::Buy,
+            2.0, // Out of range
+            0.85,
+            components.clone(),
+            weights.clone(),
+            "v1.0".to_string(),
+            "correlation-123".to_string(),
+            "checksum-abc".to_string(),
+            50,
+        );
+        
+        assert!(invalid_strength_signal.validate().is_err());
+        
+        // Invalid confidence range
+        let invalid_confidence_signal = TradingSignal::new(
+            now,
+            "BTCUSDT".to_string(),
+            SignalSide::Buy,
+            0.75,
+            1.5, // Out of range
+            components,
+            weights,
+            "v1.0".to_string(),
+            "correlation-123".to_string(),
+            "checksum-abc".to_string(),
+            50,
+        );
+        
+        assert!(invalid_confidence_signal.validate().is_err());
+    }
+
+    #[test]
+    fn test_trading_signal_consistency() {
+        let now = chrono::Utc::now().timestamp();
+        
+        let components = SignalComponents {
+            s_ldc: 0.5,
+            s_mr: 0.3,
+            s_tsmom: 0.2,
+        };
+        
+        let weights = FusionWeights {
+            w_ldc: 0.5,
+            w_mr: 0.3,
+            w_tsmom: 0.2,
+        };
+        
+        // Inconsistent BUY signal with negative strength
+        let inconsistent_buy = TradingSignal::new(
+            now,
+            "BTCUSDT".to_string(),
+            SignalSide::Buy,
+            -0.75, // Negative strength for BUY
+            0.85,
+            components.clone(),
+            weights.clone(),
+            "v1.0".to_string(),
+            "correlation-123".to_string(),
+            "checksum-abc".to_string(),
+            50,
+        );
+        
+        assert!(inconsistent_buy.validate_consistency().is_err());
+        
+        // Inconsistent SELL signal with positive strength
+        let inconsistent_sell = TradingSignal::new(
+            now,
+            "BTCUSDT".to_string(),
+            SignalSide::Sell,
+            0.75, // Positive strength for SELL
+            0.85,
+            components,
+            weights,
+            "v1.0".to_string(),
+            "correlation-123".to_string(),
+            "checksum-abc".to_string(),
+            50,
+        );
+        
+        assert!(inconsistent_sell.validate_consistency().is_err());
+    }
+
+    #[test]
+    fn test_trading_signal_serialization() {
+        let now = chrono::Utc::now().timestamp();
+        
+        let components = SignalComponents {
+            s_ldc: 0.5,
+            s_mr: 0.3,
+            s_tsmom: 0.2,
+        };
+        
+        let weights = FusionWeights {
+            w_ldc: 0.5,
+            w_mr: 0.3,
+            w_tsmom: 0.2,
+        };
+        
+        let signal = TradingSignal::new(
+            now,
+            "BTCUSDT".to_string(),
+            SignalSide::Buy,
+            0.75,
+            0.85,
+            components,
+            weights,
+            "v1.0".to_string(),
+            "correlation-123".to_string(),
+            "checksum-abc".to_string(),
+            50,
+        ).with_hmm_data(vec![0.7, 0.3], false);
+        
+        // Test JSON serialization
+        let json = signal.to_json().unwrap();
+        let deserialized = TradingSignal::from_json(&json).unwrap();
+        
+        assert_eq!(signal.symbol, deserialized.symbol);
+        assert_eq!(signal.side, deserialized.side);
+        assert_eq!(signal.strength, deserialized.strength);
+        assert_eq!(signal.correlation_id, deserialized.correlation_id);
+        assert_eq!(signal.hmm_state_probabilities, deserialized.hmm_state_probabilities);
+        
+        // Test compact string representation
+        let compact = signal.to_compact_string();
+        assert!(compact.contains("BTCUSDT"));
+        assert!(compact.contains("BUY"));
+        assert!(compact.contains("correlat"));
+    }
+
+    #[test]
+    fn test_trading_signal_hmm_validation() {
+        let now = chrono::Utc::now().timestamp();
+        
+        let components = SignalComponents {
+            s_ldc: 0.5,
+            s_mr: 0.3,
+            s_tsmom: 0.2,
+        };
+        
+        let weights = FusionWeights {
+            w_ldc: 0.5,
+            w_mr: 0.3,
+            w_tsmom: 0.2,
+        };
+        
+        // Valid HMM probabilities
+        let signal_valid_hmm = TradingSignal::new(
+            now,
+            "BTCUSDT".to_string(),
+            SignalSide::Buy,
+            0.75,
+            0.85,
+            components.clone(),
+            weights.clone(),
+            "v1.0".to_string(),
+            "correlation-123".to_string(),
+            "checksum-abc".to_string(),
+            50,
+        ).with_hmm_data(vec![0.7, 0.3], false);
+        
+        assert!(signal_valid_hmm.validate().is_ok());
+        
+        // Invalid HMM probabilities (don't sum to 1.0)
+        let signal_invalid_hmm = TradingSignal::new(
+            now,
+            "BTCUSDT".to_string(),
+            SignalSide::Buy,
+            0.75,
+            0.85,
+            components.clone(),
+            weights.clone(),
+            "v1.0".to_string(),
+            "correlation-123".to_string(),
+            "checksum-abc".to_string(),
+            50,
+        ).with_hmm_data(vec![0.5, 0.3], false); // Sum = 0.8, not 1.0
+        
+        assert!(signal_invalid_hmm.validate().is_err());
+        
+        // Invalid HMM probabilities (out of range)
+        let signal_invalid_range = TradingSignal::new(
+            now,
+            "BTCUSDT".to_string(),
+            SignalSide::Buy,
+            0.75,
+            0.85,
+            components,
+            weights,
+            "v1.0".to_string(),
+            "correlation-123".to_string(),
+            "checksum-abc".to_string(),
+            50,
+        ).with_hmm_data(vec![1.2, -0.2], false); // Out of [0,1] range
+        
+        assert!(signal_invalid_range.validate().is_err());
     }
 }

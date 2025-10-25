@@ -23,6 +23,12 @@ tracing = "0.1"
 # Configuration management
 toml = "0.8"
 
+# Signal emission dependencies
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+rdkafka = { version = "0.36", features = ["cmake-build", "ssl", "sasl"] }
+async-trait = "0.1"
+rand = "0.8"
+
 [dev-dependencies]
 tracing-subscriber = "0.3"
 criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
