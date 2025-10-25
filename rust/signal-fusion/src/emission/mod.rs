@@ -7,10 +7,54 @@ use thiserror::Error;
 
 pub mod publisher;
 pub mod validation;
+pub mod redis_publisher;
+pub mod kafka_publisher;
+pub mod circuit_breaker;
+pub mod buffer;
+pub mod audit;
+pub mod audit_logger;
+pub mod s3_uploader;
+pub mod feature_audit;
+pub mod signal_publisher;
+pub mod config;
+pub mod health_monitor;
+pub mod metrics;
+pub mod metrics_server;
 
 // Re-export commonly used types
 pub use publisher::PublisherTrait;
 pub use validation::{SignalValidator, ValidationConfig, ValidationError};
+pub use redis_publisher::{RedisPublisher, RedisConfig, RedisStreamConfig, RedisHealthConfig, OrderingStrategy};
+pub use kafka_publisher::{KafkaPublisher, KafkaConfig, KafkaProducerConfig, PartitioningConfig, PartitioningStrategy, KafkaHealthConfig, KafkaSecurityConfig, KafkaSslConfig, KafkaMetrics};
+pub use circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitState, CircuitBreakerMetrics};
+pub use buffer::{SignalBuffer, BufferConfig, BufferedSignal, BufferMetrics, OverflowStrategy, PersistenceConfig};
+pub use audit::{
+    AuditEvent, SignalEmissionEvent, FeatureComputationEvent, ValidationErrorEvent, 
+    ValidationErrorDetail, PublisherEvent, PublisherOperationType, HmmWeightEvent,
+    generate_correlation_id, generate_event_id, current_timestamp_ms
+};
+pub use audit_logger::{AuditLogger, AuditConfig, LogFileMetadata, AuditLoggerStats};
+pub use s3_uploader::{S3Uploader, S3Config, UploadResult, S3UploaderStats};
+pub use feature_audit::{
+    FeatureAuditor, FeatureAuditConfig, DataQualityIssue, FeatureTimingInfo, 
+    FeatureComputationTimer, create_feature_auditor, create_feature_auditor_with_config
+};
+pub use signal_publisher::{
+    SignalPublisher, SignalPublisherConfig, PublisherBackend, SignalPublisherMetrics
+};
+pub use config::{
+    SignalEmissionConfig, ConfigMetadata, ConfigSource, ConfigSummary, ConfigWatcher
+};
+pub use health_monitor::{
+    HealthMonitor, HealthMonitorConfig, HealthHttpConfig, ComponentHealth, 
+    HealthCheckResult, ServiceHealth, ServiceMetrics, HealthHttpServer
+};
+pub use metrics::{
+    SignalEmissionMetrics, MetricsTimer, SignalEmissionMetricsSnapshot
+};
+pub use metrics_server::{
+    MetricsServer, MetricsServerConfig, StandaloneMetricsServer
+};
 
 /// Comprehensive error types for signal emission operations
 #[derive(Debug, Error)]
@@ -27,9 +71,9 @@ pub enum SignalEmissionError {
     #[error("Redis error: {0}")]
     RedisError(#[from] redis::RedisError),
     
-    /// Kafka producer error
+    /// Kafka producer error (placeholder for future implementation)
     #[error("Kafka error: {0}")]
-    KafkaError(#[from] rdkafka::error::KafkaError),
+    KafkaError(String),
     
     /// Buffer overflow when local buffering is enabled
     #[error("Buffer overflow: maximum size {max_size} exceeded")]
@@ -62,6 +106,10 @@ pub enum SignalEmissionError {
     /// Resource exhaustion error
     #[error("Resource exhausted: {resource} - {message}")]
     ResourceExhausted { resource: String, message: String },
+    
+    /// Generic error from anyhow
+    #[error("Internal error: {0}")]
+    InternalError(#[from] anyhow::Error),
 }
 
 impl SignalEmissionError {
@@ -121,6 +169,16 @@ impl SignalEmissionError {
         }
     }
     
+    /// Create a health check error
+    pub fn health_check(message: impl Into<String>) -> Self {
+        Self::InternalError(anyhow::anyhow!("Health check failed: {}", message.into()))
+    }
+    
+    /// Create a shutdown error
+    pub fn shutdown(message: impl Into<String>) -> Self {
+        Self::InternalError(anyhow::anyhow!("Shutdown failed: {}", message.into()))
+    }
+    
     /// Check if this error is retryable
     pub fn is_retryable(&self) -> bool {
         match self {
@@ -150,6 +208,9 @@ impl SignalEmissionError {
             
             // Resource exhaustion might be retryable
             Self::ResourceExhausted { .. } => true,
+            
+            // Internal errors might be retryable depending on the underlying error
+            Self::InternalError(_) => true,
         }
     }
     
@@ -168,6 +229,7 @@ impl SignalEmissionError {
             Self::CircuitBreakerOpen { .. } => "circuit_breaker",
             Self::AuthError { .. } => "auth",
             Self::ResourceExhausted { .. } => "resource",
+            Self::InternalError(_) => "internal",
         }
     }
 }
