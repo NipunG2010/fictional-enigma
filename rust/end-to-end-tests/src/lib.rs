@@ -5,6 +5,7 @@
 
 pub mod config;
 pub mod data_generator;
+pub mod failure_simulator;
 pub mod harness;
 pub mod performance;
 pub mod reporting;
@@ -12,6 +13,7 @@ pub mod validation;
 
 pub use config::*;
 pub use data_generator::*;
+pub use failure_simulator::*;
 pub use harness::*;
 pub use performance::*;
 pub use reporting::*;

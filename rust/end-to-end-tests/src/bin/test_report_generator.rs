@@ -4,7 +4,7 @@
 //! and performing analysis on historical test data.
 
 use clap::{Arg, Command};
-use end_to_end_tests::{TestReport, TestResults};
+use end_to_end_tests::TestReport;
 use serde_json;
 use std::fs;
 use std::path::PathBuf;
@@ -235,20 +235,10 @@ async fn perform_trend_analysis(
         return Ok(());
     }
 
-    // Sort reports by generation time
-    reports.sort_by_key(|r| r.generated_at);
-
     info!("Performing trend analysis on {} reports", reports.len());
 
-    // Calculate trends
-    let mut trend_data = TrendAnalysis::new();
-    
-    for report in &reports {
-        trend_data.add_report(report);
-    }
-
-    // Generate trend report
-    let trend_report = trend_data.generate_report();
+    // Use the new trend analysis method from TestReport
+    let trend_report = TestReport::analyze_trends(&reports);
     let trend_path = output_dir.join("trend_analysis.json");
     
     let trend_json = serde_json::to_string_pretty(&trend_report)?;
@@ -266,6 +256,25 @@ async fn perform_trend_analysis(
     if let Some(trend) = trend_report.pass_rate_trend {
         info!("  Pass rate trend: {:.2}% per day", trend * 100.0);
     }
+    
+    if let Some(trend) = trend_report.duration_trend {
+        info!("  Duration trend: {:.2} minutes per day", trend);
+    }
+    
+    if !trend_report.performance_regressions.is_empty() {
+        warn!("  Performance regressions detected: {}", trend_report.performance_regressions.len());
+        for regression in &trend_report.performance_regressions {
+            warn!("    {}: {:.1}% change ({})", 
+                  regression.metric_name, 
+                  regression.percentage_change,
+                  match regression.severity {
+                      end_to_end_tests::RegressionSeverity::Critical => "CRITICAL",
+                      end_to_end_tests::RegressionSeverity::High => "HIGH",
+                      end_to_end_tests::RegressionSeverity::Medium => "MEDIUM",
+                      end_to_end_tests::RegressionSeverity::Low => "LOW",
+                  });
+        }
+    }
 
     Ok(())
 }
@@ -281,7 +290,8 @@ async fn perform_comparison(
     let current_report: TestReport = serde_json::from_str(&current_content)?;
     let baseline_report: TestReport = serde_json::from_str(&baseline_content)?;
 
-    let comparison = ComparisonReport::new(&current_report, &baseline_report);
+    // Use the new comparison method from TestReport
+    let comparison = TestReport::compare_reports(&current_report, &baseline_report);
     
     let comparison_path = output_dir.join("comparison_report.json");
     let comparison_json = serde_json::to_string_pretty(&comparison)?;
@@ -289,159 +299,51 @@ async fn perform_comparison(
 
     info!("Comparison report saved to: {}", comparison_path.display());
 
-    // Print comparison summary
+    // Print detailed comparison summary
     info!("Comparison Summary:");
+    info!("  Status: {:?}", comparison.summary.status);
     info!("  Current pass rate: {:.1}%", current_report.summary.overall_pass_rate * 100.0);
     info!("  Baseline pass rate: {:.1}%", baseline_report.summary.overall_pass_rate * 100.0);
     info!("  Pass rate change: {:.1}%", comparison.pass_rate_change * 100.0);
+    info!("  Duration change: {:.1} minutes", comparison.duration_change);
+    info!("  Health score change: {:.1}%", comparison.health_score_change * 100.0);
     
-    if comparison.pass_rate_change < -0.05 {
-        warn!("Significant regression detected: pass rate decreased by {:.1}%", 
-              comparison.pass_rate_change.abs() * 100.0);
-    } else if comparison.pass_rate_change > 0.05 {
-        info!("Improvement detected: pass rate increased by {:.1}%", 
-              comparison.pass_rate_change * 100.0);
+    if !comparison.new_failures.is_empty() {
+        warn!("New failures detected: {}", comparison.new_failures.len());
+        for failure in &comparison.new_failures {
+            warn!("  - {}", failure);
+        }
+    }
+    
+    if !comparison.resolved_failures.is_empty() {
+        info!("Resolved failures: {}", comparison.resolved_failures.len());
+        for resolved in &comparison.resolved_failures {
+            info!("  + {}", resolved);
+        }
+    }
+    
+    if !comparison.performance_regressions.is_empty() {
+        warn!("Performance regressions detected: {}", comparison.performance_regressions.len());
+        for regression in &comparison.performance_regressions {
+            warn!("  {} ({}): {:.1}% change", 
+                  regression.metric_name,
+                  match regression.severity {
+                      end_to_end_tests::RegressionSeverity::Critical => "CRITICAL",
+                      end_to_end_tests::RegressionSeverity::High => "HIGH", 
+                      end_to_end_tests::RegressionSeverity::Medium => "MEDIUM",
+                      end_to_end_tests::RegressionSeverity::Low => "LOW",
+                  },
+                  regression.percentage_change);
+        }
+    }
+    
+    if !comparison.summary.recommendations.is_empty() {
+        info!("Recommendations:");
+        for recommendation in &comparison.summary.recommendations {
+            info!("  • {}", recommendation);
+        }
     }
 
     Ok(())
 }
 
-#[derive(serde::Serialize)]
-struct TrendAnalysis {
-    reports: Vec<TrendDataPoint>,
-}
-
-#[derive(serde::Serialize)]
-#[derive(Clone)]
-struct TrendDataPoint {
-    timestamp: i64,
-    pass_rate: f64,
-    total_tests: u32,
-    duration_minutes: f64,
-    health_score: f64,
-}
-
-#[derive(serde::Serialize)]
-struct TrendReport {
-    analysis_timestamp: i64,
-    report_count: usize,
-    time_span_days: f64,
-    pass_rate_trend: Option<f64>,
-    duration_trend: Option<f64>,
-    health_score_trend: Option<f64>,
-    data_points: Vec<TrendDataPoint>,
-}
-
-#[derive(serde::Serialize)]
-struct ComparisonReport {
-    comparison_timestamp: i64,
-    pass_rate_change: f64,
-    duration_change: f64,
-    health_score_change: f64,
-    new_failures: Vec<String>,
-    resolved_failures: Vec<String>,
-}
-
-impl TrendAnalysis {
-    fn new() -> Self {
-        Self {
-            reports: Vec::new(),
-        }
-    }
-
-    fn add_report(&mut self, report: &TestReport) {
-        self.reports.push(TrendDataPoint {
-            timestamp: report.generated_at,
-            pass_rate: report.summary.overall_pass_rate,
-            total_tests: report.overall_stats().0,
-            duration_minutes: report.summary.total_duration_minutes,
-            health_score: report.summary.system_health_score,
-        });
-    }
-
-    fn generate_report(&self) -> TrendReport {
-        let report_count = self.reports.len();
-        
-        let time_span_days = if report_count > 1 {
-            let first = self.reports.first().unwrap().timestamp;
-            let last = self.reports.last().unwrap().timestamp;
-            (last - first) as f64 / (24.0 * 3600.0)
-        } else {
-            0.0
-        };
-
-        let pass_rate_trend = self.calculate_trend(|dp| dp.pass_rate);
-        let duration_trend = self.calculate_trend(|dp| dp.duration_minutes);
-        let health_score_trend = self.calculate_trend(|dp| dp.health_score);
-
-        TrendReport {
-            analysis_timestamp: chrono::Utc::now().timestamp(),
-            report_count,
-            time_span_days,
-            pass_rate_trend,
-            duration_trend,
-            health_score_trend,
-            data_points: self.reports.clone(),
-        }
-    }
-
-    fn calculate_trend<F>(&self, value_fn: F) -> Option<f64>
-    where
-        F: Fn(&TrendDataPoint) -> f64,
-    {
-        if self.reports.len() < 2 {
-            return None;
-        }
-
-        let n = self.reports.len() as f64;
-        let sum_x: f64 = (0..self.reports.len()).map(|i| i as f64).sum();
-        let sum_y: f64 = self.reports.iter().map(&value_fn).sum();
-        let sum_xy: f64 = self.reports.iter().enumerate()
-            .map(|(i, dp)| i as f64 * value_fn(dp))
-            .sum();
-        let sum_x2: f64 = (0..self.reports.len()).map(|i| (i as f64).powi(2)).sum();
-
-        let denominator = n * sum_x2 - sum_x.powi(2);
-        if denominator.abs() < f64::EPSILON {
-            return None;
-        }
-
-        let slope = (n * sum_xy - sum_x * sum_y) / denominator;
-        Some(slope)
-    }
-}
-
-impl ComparisonReport {
-    fn new(current: &TestReport, baseline: &TestReport) -> Self {
-        let pass_rate_change = current.summary.overall_pass_rate - baseline.summary.overall_pass_rate;
-        let duration_change = current.summary.total_duration_minutes - baseline.summary.total_duration_minutes;
-        let health_score_change = current.summary.system_health_score - baseline.summary.system_health_score;
-
-        let current_failures: std::collections::HashSet<String> = current.all_failed_tests()
-            .into_iter()
-            .map(|(suite, test)| format!("{}::{}", suite, test.name))
-            .collect();
-
-        let baseline_failures: std::collections::HashSet<String> = baseline.all_failed_tests()
-            .into_iter()
-            .map(|(suite, test)| format!("{}::{}", suite, test.name))
-            .collect();
-
-        let new_failures: Vec<String> = current_failures.difference(&baseline_failures)
-            .cloned()
-            .collect();
-
-        let resolved_failures: Vec<String> = baseline_failures.difference(&current_failures)
-            .cloned()
-            .collect();
-
-        Self {
-            comparison_timestamp: chrono::Utc::now().timestamp(),
-            pass_rate_change,
-            duration_change,
-            health_score_change,
-            new_failures,
-            resolved_failures,
-        }
-    }
-}

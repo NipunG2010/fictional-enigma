@@ -35,14 +35,17 @@ feature-pipeline = { path = "../feature-pipeline" }
 # ldc-engine = { path = "../ldc-engine" }  # Temporarily disabled due to OpenSSL issues
 # signal-fusion = { path = "../signal-fusion" }  # Temporarily disabled due to OpenSSL issues
 
-# Temporarily disabled due to dependency issues
-# [[bin]]
-# name = "test-runner"
-# path = "src/bin/test_runner.rs"
+[[bin]]
+name = "test-runner"
+path = "src/bin/test_runner.rs"
 
-# [[bin]]
-# name = "test-report-generator"
-# path = "src/bin/test_report_generator.rs"
+[[bin]]
+name = "test-report-generator"
+path = "src/bin/test_report_generator.rs"
+
+[[bin]]
+name = "ci-helper"
+path = "src/bin/ci_helper.rs"
 
 [dev-dependencies]
 tokio-test = "0.4"

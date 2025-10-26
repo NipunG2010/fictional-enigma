@@ -54,6 +54,28 @@ body {
     color: #2c3e50;
 }
 
+.summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    align-items: center;
+}
+
+.summary-stats {
+    /* Stats on the left */
+}
+
+.summary-charts {
+    /* Charts on the right */
+    display: flex;
+    justify-content: center;
+}
+
+.summary-charts canvas {
+    max-width: 300px;
+    max-height: 200px;
+}
+
 .results {
     background: white;
     padding: 25px;

@@ -4,42 +4,68 @@ inclusion: always
 
 # Project Structure & Organization
 
-## Repository Layout
+## Repository Layout (Current Implementation)
 
 ```
 IMP/
-├── rust/                           # Rust workspace for high-performance inference
+├── rust/                           # Rust workspace (production inference)
 │   ├── Cargo.toml                  # Workspace configuration
-│   ├── feature-pipeline/           # Technical indicator computation
-│   ├── ldc-engine/                 # Lorentzian k-NN classifier
-│   ├── signal-fusion/              # Regime-aware signal combination
-│   ├── training-data-cli/          # LDC training data management
-│   └── inference-engine/           # Main inference orchestration
+│   ├── feature-pipeline/           # ✅ Technical indicator computation
+│   ├── ldc-engine/                 # ✅ Lorentzian k-NN classifier
+│   │   ├── benches/                # Performance benchmarks
+│   │   ├── tests/                  # Comprehensive test suite
+│   │   └── examples/               # Usage examples
+│   ├── signal-fusion/              # ✅ Regime-aware signal combination
+│   │   ├── docs/                   # Integration guides
+│   │   ├── examples/               # Configuration examples
+│   │   └── tests/                  # Integration tests
+│   ├── training-data-cli/          # ✅ LDC training data management
+│   ├── inference-engine/           # ✅ Main inference orchestration
+│   └── end-to-end-tests/           # ✅ Full system integration tests
 │
-├── py/                             # Python workspace for research and training
-│   ├── imp/                        # Main Python package
-│   │   ├── hmm/                    # HMM training and inference
-│   │   ├── data/                   # Data loading and preprocessing
-│   │   ├── visualization/          # Regime visualization
-│   │   ├── evaluation/             # Model evaluation and cross-validation
-│   │   ├── tuning/                 # Interactive parameter optimization
-│   │   └── utils/                  # Shared utilities
-│   ├── notebooks/                  # Jupyter research environment
-│   ├── tests/                      # Python test suite
-│   ├── examples/                   # Example scripts and demos
-│   ├── docs/                       # Python-specific documentation
+├── py/                             # Python workspace (research & services)
+│   ├── imp/                        # ✅ Main Python package
+│   │   ├── hmm/                    # ✅ HMM training, inference, optimization
+│   │   │   ├── trainer.py          # Multi-library HMM training
+│   │   │   ├── weight_optimizer.py # Fusion weight optimization
+│   │   │   ├── artifact_management.py # Model versioning & storage
+│   │   │   └── regime_analysis.py  # Regime interpretation tools
+│   │   ├── data/                   # ✅ Data loading and preprocessing
+│   │   ├── visualization/          # ✅ Regime visualization
+│   │   ├── evaluation/             # ✅ Model evaluation and cross-validation
+│   │   ├── tuning/                 # ✅ Interactive parameter optimization
+│   │   └── utils/                  # ✅ Shared utilities
+│   ├── hmm_service/                # ✅ FastAPI microservice
+│   │   ├── core/                   # Service core (inference, caching, etc.)
+│   │   ├── routers/                # API endpoints
+│   │   └── docs/                   # API documentation
+│   ├── notebooks/                  # ✅ Jupyter research environment
+│   ├── tests/                      # ✅ Comprehensive Python test suite
+│   ├── examples/                   # ✅ Example scripts and demos
+│   ├── docs/                       # ✅ Python-specific documentation
 │   ├── pyproject.toml              # Python package configuration
 │   └── Makefile                    # Development commands
 │
-├── docs/                           # Project documentation
+├── docs/                           # ✅ Project documentation
 │   ├── plan.md                     # Implementation plan (6 phases)
 │   ├── architecture.md             # Architecture deep-dive
 │   └── ldc-engine/                 # LDC-specific documentation
 │
-├── notebooks/                      # Shared research notebooks
-├── validation/                     # Reference implementations and validation
-├── docker-compose.yml              # Infrastructure services
-└── .github/workflows/              # CI/CD pipeline
+├── notebooks/                      # ✅ Shared research notebooks (10 notebooks)
+│   ├── 00_getting_started_tutorial.ipynb
+│   ├── 01_data_exploration.ipynb
+│   ├── 02_hmm_training_comparison.ipynb
+│   ├── 03_regime_analysis.ipynb
+│   ├── 04_parameter_optimization.ipynb
+│   ├── 05_parameter_tuning_demo.ipynb
+│   ├── 06_production_deployment_tutorial.ipynb
+│   ├── 07_systematic_hmm_training.ipynb
+│   ├── 08_fusion_weight_optimization.ipynb
+│   └── 09_minio_deployment_workflow.ipynb
+│
+├── validation/                     # ✅ Reference implementations
+├── docker-compose.yml              # ✅ Infrastructure services
+└── .github/workflows/              # CI/CD pipeline (planned)
 ```
 
 ## Naming Conventions
@@ -66,10 +92,30 @@ IMP/
 
 ## Data Organization
 
-### Storage Hierarchy
+### Storage Hierarchy (MinIO/S3 + Local)
 ```
+# MinIO/S3 Storage (Production)
+artifacts/
+├── hmm/                            # HMM model artifacts
+│   ├── systematic_training_results/
+│   │   ├── hmm_2_states.json       # 2-state HMM model
+│   │   ├── hmm_3_states.json       # 3-state HMM model
+│   │   └── hmm_4_states.json       # 4-state HMM model
+│   └── fusion_weights/
+│       ├── weights_scipy_v1.json   # Scipy-optimized weights
+│       └── weights_grid_v1.json    # Grid-search weights
+├── ldc/                            # LDC training snapshots
+│   ├── training_snapshot_v1.bin
+│   └── hnsw_index_v1.bin
+└── experiments/                    # Experiment tracking
+    └── exp_20241026_123456/
+        ├── config.json
+        ├── results.json
+        └── artifacts/
+
+# Local Storage (Development)
 data/
-├── raw/                            # Raw OHLCV data
+├── raw/                            # Raw OHLCV data (Parquet)
 │   └── symbol=BTCUSDT/
 │       └── interval=5m/
 │           └── date=2024-01-01/
@@ -77,23 +123,22 @@ data/
 │   └── symbol=BTCUSDT/
 │       └── interval=5m/
 │           └── date=2024-01-01/
-├── models/                         # Trained model artifacts
-│   ├── hmm/
-│   │   ├── hmm_v1.json
-│   │   └── weights_v1.json
-│   └── ldc/
-│       ├── training_snapshot_v1.bin
-│       └── hnsw_index_v1.bin
+├── processed_data/                 # Notebook outputs
+│   ├── hmm_observations.parquet
+│   ├── quality_report.json
+│   └── regime_analysis_report.json
 └── signals/                        # Generated trading signals
     └── symbol=BTCUSDT/
         └── date=2024-01-01/
 ```
 
-### Artifact Formats
-- **HMM Models**: JSON with `{A, mu, sigma, weights, metadata}`
-- **LDC Training**: Binary format with memory-mapped access
-- **Features**: Parquet with Snappy compression
-- **Signals**: JSONL with full audit trail
+### Artifact Formats (Standardized)
+- **HMM Models**: JSON with `{A, mu, sigma, weights, metadata, version, timestamp}`
+- **Fusion Weights**: JSON with per-state weights and optimization metadata
+- **LDC Training**: Binary format with memory-mapped access for performance
+- **Features**: Parquet with Snappy compression, partitioned by symbol/interval/date
+- **Signals**: JSONL with full audit trail, correlation IDs, and metadata
+- **Experiments**: JSON with configuration, results, and artifact references
 
 ## Module Responsibilities
 
@@ -196,8 +241,18 @@ data/
 - Development tools integrated via Makefile
 - Jupyter kernel configuration for research
 
-### Cross-Language Integration
-- Well-defined data contracts (Parquet, JSON schemas)
-- REST API specifications for service communication
-- Shared validation logic where possible
-- Consistent error handling and logging formats
+### Cross-Language Integration (Production-Ready)
+- **Data Contracts**: Parquet schemas with Arrow compatibility
+- **API Specifications**: OpenAPI 3.0 specs for HMM service
+- **Service Communication**: REST with circuit breakers and retry logic
+- **Artifact Exchange**: JSON schemas with semantic versioning
+- **Error Handling**: Consistent error codes and structured logging
+- **Configuration**: TOML/JSON with environment variable overrides
+- **Monitoring**: Structured logs with correlation IDs across services
+
+### Notebook Integration Patterns
+- **Data Loading**: Standardized loaders in `imp.data` package
+- **Model Training**: Consistent API across `imp.hmm.trainer`
+- **Visualization**: Reusable components in `imp.visualization`
+- **Artifact Management**: Unified storage via `imp.hmm.artifact_management`
+- **Testing**: Notebook validation via pytest integration
