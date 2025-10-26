@@ -1,0 +1,47 @@
+[package]
+name = "end-to-end-tests"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+# polars = { workspace = true }  # Temporarily disabled due to OpenSSL issues
+# reqwest = { workspace = true }  # Temporarily disabled due to OpenSSL issues
+futures = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+config = { workspace = true }
+chrono = { workspace = true }
+toml = "0.8"
+
+# Testing specific dependencies
+uuid = { version = "1.0", features = ["v4", "serde"] }
+tempfile = "3.0"
+rand = "0.8"
+rand_chacha = "0.3"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+# Local crates - temporarily disabled due to dependency issues
+# feature-pipeline = { path = "../feature-pipeline" }
+# ldc-engine = { path = "../ldc-engine" }
+# signal-fusion = { path = "../signal-fusion" }
+
+# Temporarily disabled due to dependency issues
+# [[bin]]
+# name = "test-runner"
+# path = "src/bin/test_runner.rs"
+
+# [[bin]]
+# name = "test-report-generator"
+# path = "src/bin/test_report_generator.rs"
+
+[dev-dependencies]
+tokio-test = "0.4"

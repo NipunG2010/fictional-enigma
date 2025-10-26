@@ -1,3 +1,60 @@
+//! # Signal Fusion & Emission
+//!
+//! A high-performance Rust crate for trading signal fusion and emission to message bus 
+//! infrastructure (Redis Streams/Kafka) with comprehensive audit logging and monitoring.
+//!
+//! ## Quick Start
+//!
+//! ```rust
+//! use signal_fusion::{SignalFusion, TradingSignal, SignalSide};
+//! use signal_fusion::emission::{SignalPublisher, SignalEmissionConfig};
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Load configuration
+//! let config = SignalEmissionConfig::from_file("signal_emission.toml")?;
+//!
+//! // Create signal publisher
+//! let mut publisher = SignalPublisher::new(config.publisher).await?;
+//!
+//! // Create and publish a trading signal
+//! let signal = TradingSignal {
+//!     timestamp: chrono::Utc::now().timestamp_millis(),
+//!     symbol: "BTCUSDT".to_string(),
+//!     side: SignalSide::Buy,
+//!     strength: 0.75,
+//!     confidence: 0.85,
+//!     // ... other required fields
+//! };
+//!
+//! publisher.publish_signal(signal).await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Core Modules
+//!
+//! - [`emission`] - Signal emission to Redis/Kafka with audit logging
+//! - [`config`] - HMM integration configuration management  
+//! - [`hmm_client`] - HTTP client for HMM microservice communication
+//! - [`weight_cache`] - Caching layer for HMM weights with TTL
+//! - [`metrics`] - Performance metrics collection and export
+//! - [`signal_emitter`] - High-level signal emission interface
+//! - [`signal_pipeline`] - Complete signal processing pipeline
+//!
+//! ## Signal Emission Features
+//!
+//! The [`emission`] module provides:
+//!
+//! - **Multi-Backend Publishing**: Redis Streams and Kafka topics
+//! - **Reliability**: Circuit breakers, retry logic, local buffering
+//! - **Audit Logging**: Comprehensive audit trails with S3 archival
+//! - **Monitoring**: Prometheus metrics and health endpoints
+//! - **Validation**: Schema validation with configurable rules
+//! - **Configuration**: TOML files with environment variable overrides
+//!
+//! See the [`emission`] module documentation for detailed usage examples.
+
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn, error};
@@ -6,7 +63,33 @@ pub mod config;
 pub mod hmm_client;
 pub mod weight_cache;
 pub mod metrics;
+
+/// Signal emission to message bus infrastructure with audit logging
+/// 
+/// This module provides comprehensive signal emission capabilities including:
+/// - Redis Streams and Kafka topic publishing
+/// - Circuit breakers and retry logic for reliability
+/// - Local buffering during outages
+/// - Comprehensive audit logging with S3 archival
+/// - Prometheus metrics and health monitoring
+/// - Signal validation with configurable rules
+/// 
+/// # Quick Start
+/// 
+/// ```rust
+/// use signal_fusion::emission::{SignalPublisher, SignalEmissionConfig};
+/// 
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let config = SignalEmissionConfig::from_file("config.toml")?;
+/// let mut publisher = SignalPublisher::new(config.publisher).await?;
+/// 
+/// // Publish signals...
+/// # Ok(())
+/// # }
+/// ```
 pub mod emission;
+
 pub mod signal_emitter;
 pub mod signal_pipeline;
 

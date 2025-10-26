@@ -6,6 +6,7 @@ members = [
     "ldc-engine",
     "signal-fusion",
     "training-data-cli",
+    "end-to-end-tests",
 ]
 
 [workspace.package]
@@ -45,7 +46,7 @@ arrow2 = "0.17"
 parquet = "0.17"
 
 # HTTP client
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 
 # Async runtime
 futures = "0.3"
@@ -61,6 +62,7 @@ rayon = "1.7"
 # Configuration
 config = "0.13"
 clap = { version = "4.0", features = ["derive"] }
+# Temporarily disable clap for end-to-end-tests due to dependency issues
 
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }

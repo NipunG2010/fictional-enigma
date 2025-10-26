@@ -342,8 +342,11 @@ impl AuditLogger {
                 SignalEmissionError::audit(format!("Failed to acquire writer lock for rotation: {}", e))
             })?;
             
-            if let Some(writer) = writer_guard.take() {
-                drop(writer); // This will flush and close the file
+            if let Some(mut writer) = writer_guard.take() {
+                writer.flush().map_err(|e| {
+                    SignalEmissionError::audit(format!("Failed to flush audit log on rotation: {}", e))
+                })?;
+                drop(writer);
             }
         }
         
@@ -630,8 +633,11 @@ impl AuditLogger {
                 SignalEmissionError::audit(format!("Failed to acquire writer lock for shutdown: {}", e))
             })?;
             
-            if let Some(writer) = writer_guard.take() {
-                drop(writer); // This will flush and close the file
+            if let Some(mut writer) = writer_guard.take() {
+                writer.flush().map_err(|e| {
+                    SignalEmissionError::audit(format!("Failed to flush audit log on shutdown: {}", e))
+                })?;
+                drop(writer);
             }
         }
         

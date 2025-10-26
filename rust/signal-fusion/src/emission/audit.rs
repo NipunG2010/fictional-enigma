@@ -133,7 +133,9 @@ impl SignalEmissionEvent {
     }
     
     /// Add metadata to the event
-    pub fn with_metadata(mut self, key: String, value: String) -> Self {
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        let key = key.into();
+        let value = value.into();
         self.metadata.insert(key, value);
         self
     }
@@ -248,7 +250,9 @@ impl FeatureComputationEvent {
     }
     
     /// Add metadata to the event
-    pub fn with_metadata(mut self, key: String, value: String) -> Self {
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        let key = key.into();
+        let value = value.into();
         self.metadata.insert(key, value);
         self
     }
@@ -378,7 +382,9 @@ impl ValidationErrorEvent {
     }
     
     /// Add metadata to the event
-    pub fn with_metadata(mut self, key: String, value: String) -> Self {
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        let key = key.into();
+        let value = value.into();
         self.metadata.insert(key, value);
         self
     }
@@ -510,7 +516,9 @@ impl PublisherEvent {
     }
     
     /// Add metadata to the event
-    pub fn with_metadata(mut self, key: String, value: String) -> Self {
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        let key = key.into();
+        let value = value.into();
         self.metadata.insert(key, value);
         self
     }
@@ -638,7 +646,9 @@ impl HmmWeightEvent {
     }
     
     /// Add metadata to the event
-    pub fn with_metadata(mut self, key: String, value: String) -> Self {
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        let key = key.into();
+        let value = value.into();
         self.metadata.insert(key, value);
         self
     }

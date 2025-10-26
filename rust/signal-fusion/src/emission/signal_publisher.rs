@@ -2,6 +2,156 @@
 //! 
 //! This module provides the main SignalPublisher struct that manages multiple
 //! backend publishers and provides a unified interface for signal emission.
+//!
+//! # Quick Start
+//!
+//! ```rust
+//! use signal_fusion::emission::{SignalPublisher, SignalPublisherConfig, PublisherBackend};
+//! use signal_fusion::{TradingSignal, SignalSide};
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Create configuration
+//! let config = SignalPublisherConfig {
+//!     backend: PublisherBackend::Redis,
+//!     enabled: true,
+//!     batch_size: 100,
+//!     flush_interval_ms: 1000,
+//!     ..Default::default()
+//! };
+//!
+//! // Create publisher
+//! let mut publisher = SignalPublisher::new(config).await?;
+//!
+//! // Create a trading signal
+//! let signal = TradingSignal {
+//!     timestamp: chrono::Utc::now().timestamp_millis(),
+//!     symbol: "BTCUSDT".to_string(),
+//!     side: SignalSide::Buy,
+//!     strength: 0.75,
+//!     confidence: 0.85,
+//!     correlation_id: "req_123".to_string(),
+//!     feature_checksum: "abc123".to_string(),
+//!     // ... other required fields
+//! };
+//!
+//! // Publish signal
+//! publisher.publish_signal(signal).await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Configuration
+//!
+//! The publisher can be configured to use different backends:
+//!
+//! ```rust
+//! use signal_fusion::emission::{SignalPublisherConfig, PublisherBackend};
+//!
+//! // Redis only
+//! let redis_config = SignalPublisherConfig {
+//!     backend: PublisherBackend::Redis,
+//!     ..Default::default()
+//! };
+//!
+//! // Kafka only  
+//! let kafka_config = SignalPublisherConfig {
+//!     backend: PublisherBackend::Kafka,
+//!     ..Default::default()
+//! };
+//!
+//! // Both Redis and Kafka
+//! let both_config = SignalPublisherConfig {
+//!     backend: PublisherBackend::Both,
+//!     ..Default::default()
+//! };
+//!
+//! // Disabled (for testing)
+//! let disabled_config = SignalPublisherConfig {
+//!     backend: PublisherBackend::None,
+//!     ..Default::default()
+//! };
+//! ```
+//!
+//! # Batch Publishing
+//!
+//! For better performance, publish multiple signals in batches:
+//!
+//! ```rust
+//! # use signal_fusion::emission::SignalPublisher;
+//! # use signal_fusion::TradingSignal;
+//! # async fn example(mut publisher: SignalPublisher, signals: Vec<TradingSignal>) -> Result<(), Box<dyn std::error::Error>> {
+//! // Publish multiple signals at once
+//! publisher.publish_batch(signals).await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Health Monitoring
+//!
+//! Check the health of all configured backends:
+//!
+//! ```rust
+//! # use signal_fusion::emission::SignalPublisher;
+//! # async fn example(publisher: SignalPublisher) -> Result<(), Box<dyn std::error::Error>> {
+//! let health = publisher.health_check().await;
+//! match health.level {
+//!     signal_fusion::emission::HealthLevel::Healthy => {
+//!         println!("All systems operational");
+//!     },
+//!     signal_fusion::emission::HealthLevel::Degraded => {
+//!         println!("Some issues detected: {}", health.message);
+//!     },
+//!     signal_fusion::emission::HealthLevel::Unhealthy => {
+//!         println!("System unhealthy: {}", health.message);
+//!     },
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Metrics Collection
+//!
+//! Get performance metrics from the publisher:
+//!
+//! ```rust
+//! # use signal_fusion::emission::SignalPublisher;
+//! # async fn example(publisher: SignalPublisher) -> Result<(), Box<dyn std::error::Error>> {
+//! let metrics = publisher.get_metrics();
+//! println!("Signals published: {}", metrics.signals_published_total);
+//! println!("Validation errors: {}", metrics.validation_errors_total);
+//! println!("Publisher errors: {}", metrics.publisher_errors_total);
+//! println!("Buffer utilization: {:.1}%", metrics.buffer_utilization_percent);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Error Handling
+//!
+//! The publisher provides detailed error information:
+//!
+//! ```rust
+//! # use signal_fusion::emission::{SignalPublisher, SignalEmissionError};
+//! # use signal_fusion::TradingSignal;
+//! # async fn example(mut publisher: SignalPublisher, signal: TradingSignal) -> Result<(), Box<dyn std::error::Error>> {
+//! match publisher.publish_signal(signal).await {
+//!     Ok(_) => println!("Signal published successfully"),
+//!     Err(SignalEmissionError::ValidationError { message }) => {
+//!         println!("Signal validation failed: {}", message);
+//!     },
+//!     Err(SignalEmissionError::PublisherError { backend, message }) => {
+//!         println!("Publisher error on {}: {}", backend, message);
+//!     },
+//!     Err(SignalEmissionError::CircuitBreakerOpen { reason }) => {
+//!         println!("Circuit breaker open: {}", reason);
+//!     },
+//!     Err(e) => {
+//!         println!("Other error: {}", e);
+//!     }
+//! }
+//! # Ok(())
+//! # }
+//! ```
 
 use std::collections::HashMap;
 use std::sync::Arc;

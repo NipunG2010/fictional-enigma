@@ -2,6 +2,163 @@
 //! 
 //! This module provides comprehensive configuration management for the signal emission system,
 //! supporting TOML files, environment variables, and configuration validation.
+//!
+//! # Quick Start
+//!
+//! ## Loading Configuration from File
+//!
+//! ```rust
+//! use signal_fusion::emission::SignalEmissionConfig;
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Load configuration from TOML file
+//! let config = SignalEmissionConfig::from_file("signal_emission.toml")?;
+//! println!("Loaded config for backend: {}", config.publisher.backend);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Loading with Environment Variable Overrides
+//!
+//! ```rust
+//! use signal_fusion::emission::SignalEmissionConfig;
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Load config with environment variable overrides
+//! let config = SignalEmissionConfig::from_file_with_env("signal_emission.toml")?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Environment variables override file settings using the format `SECTION_SUBSECTION_KEY`:
+//! - `PUBLISHER_ENABLED=true`
+//! - `REDIS_URL=redis://localhost:6379`
+//! - `KAFKA_BROKERS=localhost:9092`
+//! - `AUDIT_ENABLED=false`
+//!
+//! ## Creating Configuration Programmatically
+//!
+//! ```rust
+//! use signal_fusion::emission::{
+//!     SignalEmissionConfig, SignalPublisherConfig, PublisherBackend,
+//!     RedisConfig, BufferConfig, AuditConfig, ValidationConfig
+//! };
+//!
+//! let config = SignalEmissionConfig {
+//!     publisher: SignalPublisherConfig {
+//!         enabled: true,
+//!         backend: PublisherBackend::Redis,
+//!         batch_size: 100,
+//!         flush_interval_ms: 1000,
+//!         ..Default::default()
+//!     },
+//!     redis: Some(RedisConfig {
+//!         url: "redis://localhost:6379".to_string(),
+//!         stream_name: "trading_signals".to_string(),
+//!         max_stream_length: Some(10000),
+//!         ..Default::default()
+//!     }),
+//!     kafka: None,
+//!     buffer: BufferConfig::default(),
+//!     audit: AuditConfig::default(),
+//!     validation: ValidationConfig::default(),
+//!     metadata: Default::default(),
+//! };
+//! ```
+//!
+//! ## Configuration Validation
+//!
+//! ```rust
+//! use signal_fusion::emission::SignalEmissionConfig;
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let config = SignalEmissionConfig::from_file("signal_emission.toml")?;
+//!
+//! // Validate configuration
+//! config.validate()?;
+//! println!("Configuration is valid");
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Configuration File Format
+//!
+//! The configuration uses TOML format with the following structure:
+//!
+//! ```toml
+//! [publisher]
+//! enabled = true
+//! backend = "redis"  # "redis", "kafka", "both", or "none"
+//! batch_size = 100
+//! flush_interval_ms = 1000
+//!
+//! [redis]
+//! url = "redis://localhost:6379"
+//! stream_name = "trading_signals"
+//! max_stream_length = 10000
+//!
+//! [kafka]
+//! brokers = ["localhost:9092"]
+//! topic = "trading_signals"
+//! partition_strategy = "symbol"
+//!
+//! [buffer]
+//! max_size = 1000
+//! persist_to_disk = true
+//!
+//! [audit]
+//! enabled = true
+//! file_path = "/var/log/imp/signals.jsonl"
+//!
+//! [validation]
+//! enabled = true
+//! strict_mode = true
+//! ```
+//!
+//! # Environment Variable Overrides
+//!
+//! All configuration values can be overridden with environment variables:
+//!
+//! | Configuration Path | Environment Variable |
+//! |-------------------|---------------------|
+//! | `publisher.enabled` | `PUBLISHER_ENABLED` |
+//! | `publisher.backend` | `PUBLISHER_BACKEND` |
+//! | `redis.url` | `REDIS_URL` |
+//! | `kafka.brokers` | `KAFKA_BROKERS` |
+//! | `buffer.max_size` | `BUFFER_MAX_SIZE` |
+//! | `audit.enabled` | `AUDIT_ENABLED` |
+//!
+//! # Configuration Validation
+//!
+//! The configuration system validates:
+//! - Required fields are present
+//! - Backend-specific configuration is provided
+//! - Value ranges are within acceptable limits
+//! - File paths are accessible
+//! - Network addresses are valid
+//!
+//! # Hot Reloading
+//!
+//! Configuration can be reloaded at runtime:
+//!
+//! ```rust
+//! use signal_fusion::emission::ConfigWatcher;
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let mut watcher = ConfigWatcher::new("signal_emission.toml")?;
+//!
+//! // Watch for configuration changes
+//! while let Some(new_config) = watcher.next_change().await? {
+//!     println!("Configuration updated: {:?}", new_config.metadata.last_modified);
+//!     // Apply new configuration...
+//! }
+//! # Ok(())
+//! # }
+//! ```
 
 use std::env;
 use std::fs;
