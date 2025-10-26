@@ -1,0 +1,389 @@
+name: End-to-End Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_config:
+        description: 'Test configuration to use'
+        required: false
+        default: 'test_config.toml'
+        type: string
+      baseline_report:
+        description: 'Baseline report for comparison (optional)'
+        required: false
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  end-to-end-tests:
+    name: End-to-End Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      kafka:
+        image: confluentinc/cp-kafka:latest
+        ports:
+          - 9092:9092
+        env:
+          KAFKA_BROKER_ID: 1
+          KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+          KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+        options: >-
+          --health-cmd "kafka-topics --bootstrap-server localhost:9092 --list"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 5
+      
+      zookeeper:
+        image: confluentinc/cp-zookeeper:latest
+        ports:
+          - 2181:2181
+        env:
+          ZOOKEEPER_CLIENT_PORT: 2181
+          ZOOKEEPER_TICK_TIME: 2000
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for trend analysis
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev
+
+      - name: Build end-to-end test framework
+        working-directory: rust
+        run: |
+          cargo build --release --package end-to-end-tests
+          cargo build --release --bin test-runner
+          cargo build --release --bin test-report-generator
+
+      - name: Setup test environment
+        run: |
+          mkdir -p test-results
+          mkdir -p test-artifacts
+          
+          # Create test configuration if not provided
+          if [ ! -f "rust/end-to-end-tests/test_config.toml" ]; then
+            cat > rust/end-to-end-tests/test_config.toml << EOF
+          [pipeline_tests]
+          test_symbols = ["BTCUSDT", "ETHUSDT"]
+          test_duration_hours = 1
+          data_interval = "5m"
+          include_edge_cases = true
+          validate_against_reference = false
+          
+          [failure_tests]
+          test_hmm_failures = true
+          test_redis_failures = true
+          test_kafka_failures = true
+          test_data_corruption = true
+          failure_duration_seconds = 10
+          recovery_timeout_seconds = 30
+          
+          [performance_tests]
+          max_end_to_end_latency_ms = 100
+          min_throughput_signals_per_second = 5.0
+          max_memory_usage_mb = 512
+          concurrent_symbols = 3
+          test_duration_minutes = 2
+          
+          [execution]
+          output_dir = "test-results"
+          max_parallel_tests = 4
+          test_timeout_seconds = 300
+          verbose_logging = true
+          
+          [validation]
+          feature_tolerance = 0.001
+          signal_tolerance = 0.01
+          performance_tolerance = 0.1
+          EOF
+          fi
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for Redis..."
+          timeout 60 bash -c 'until redis-cli -h localhost -p 6379 ping; do sleep 1; done'
+          
+          echo "Waiting for Kafka..."
+          timeout 120 bash -c 'until echo "test" | timeout 5 nc -w 1 localhost 9092; do sleep 2; done'
+
+      - name: Run end-to-end tests
+        id: run_tests
+        working-directory: rust/end-to-end-tests
+        run: |
+          # Set test configuration
+          TEST_CONFIG="${{ github.event.inputs.test_config || 'test_config.toml' }}"
+          
+          # Run the test suite
+          echo "Running end-to-end tests with config: $TEST_CONFIG"
+          cargo run --release --bin test-runner -- \
+            --config "$TEST_CONFIG" \
+            --output-dir "../../test-results" \
+            --format json \
+            --verbose
+          
+          # Check if tests completed successfully
+          if [ $? -eq 0 ]; then
+            echo "test_status=success" >> $GITHUB_OUTPUT
+          else
+            echo "test_status=failure" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate test reports
+        if: always()
+        working-directory: rust/end-to-end-tests
+        run: |
+          # Generate comprehensive reports
+          cargo run --release --bin test-report-generator -- \
+            --input "../../test-results" \
+            --output "../../test-artifacts" \
+            --format both \
+            --analyze
+          
+          # Generate CI summary
+          if [ -f "../../test-results/test_report_latest.json" ]; then
+            echo "Generating CI summary..."
+            python3 -c "
+          import json
+          import sys
+          
+          try:
+              with open('../../test-results/test_report_latest.json', 'r') as f:
+                  report = json.load(f)
+              
+              summary = report.get('summary', {})
+              print(f\"::notice title=Test Summary::Tests completed with {summary.get('overall_pass_rate', 0)*100:.1f}% pass rate\")
+              
+              if summary.get('critical_failures', 0) > 0:
+                  print(f\"::error title=Critical Failures::{summary['critical_failures']} critical test failures detected\")
+              
+              if summary.get('performance_violations', 0) > 0:
+                  print(f\"::warning title=Performance Issues::{summary['performance_violations']} performance violations detected\")
+              
+              # Set outputs for other steps
+              with open('$GITHUB_OUTPUT', 'a') as f:
+                  f.write(f\"pass_rate={summary.get('overall_pass_rate', 0)}\n\")
+                  f.write(f\"total_tests={len([tc for suite in report.get('results', []) for tc in suite.get('test_cases', [])])}\n\")
+                  f.write(f\"failed_tests={summary.get('critical_failures', 0)}\n\")
+                  f.write(f\"duration_minutes={summary.get('total_duration_minutes', 0)}\n\")
+          except Exception as e:
+              print(f\"::error title=Report Processing Error::Failed to process test report: {e}\")
+              sys.exit(1)
+          "
+          fi
+
+      - name: Performance regression detection
+        if: always() && github.event.inputs.baseline_report
+        working-directory: rust/end-to-end-tests
+        run: |
+          BASELINE_REPORT="${{ github.event.inputs.baseline_report }}"
+          CURRENT_REPORT="../../test-results/test_report_latest.json"
+          
+          if [ -f "$CURRENT_REPORT" ] && [ -f "$BASELINE_REPORT" ]; then
+            echo "Comparing against baseline: $BASELINE_REPORT"
+            cargo run --release --bin test-report-generator -- \
+              --input "$CURRENT_REPORT" \
+              --output "../../test-artifacts" \
+              --compare "$BASELINE_REPORT"
+            
+            # Check for regressions
+            if [ -f "../../test-artifacts/comparison_report.json" ]; then
+              python3 -c "
+          import json
+          
+          with open('../../test-artifacts/comparison_report.json', 'r') as f:
+              comparison = json.load(f)
+          
+          regressions = comparison.get('performance_regressions', [])
+          if regressions:
+              print(f\"::error title=Performance Regression::Detected {len(regressions)} performance regressions\")
+              for reg in regressions[:3]:  # Show first 3
+                  print(f\"::warning title={reg['metric_name']}::{reg['description']} ({reg['percentage_change']:.1f}% change)\")
+          
+          if comparison.get('pass_rate_change', 0) < -0.05:
+              print(f\"::error title=Pass Rate Regression::Pass rate decreased by {abs(comparison['pass_rate_change'])*100:.1f}%\")
+          "
+            fi
+          else
+            echo "::warning title=Baseline Comparison::Baseline report not found or current report missing"
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results-${{ github.run_number }}
+          path: |
+            test-results/
+            test-artifacts/
+          retention-days: 30
+
+      - name: Upload test reports to GitHub Pages
+        if: always() && github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: test-artifacts
+          destination_dir: test-reports/${{ github.run_number }}
+          keep_files: true
+
+      - name: Comment PR with test results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            try {
+              // Read test report if it exists
+              const reportPath = 'test-results/test_report_latest.json';
+              if (!fs.existsSync(reportPath)) {
+                console.log('No test report found');
+                return;
+              }
+              
+              const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+              const summary = report.summary || {};
+              
+              const passRate = (summary.overall_pass_rate || 0) * 100;
+              const duration = summary.total_duration_minutes || 0;
+              const failures = summary.critical_failures || 0;
+              const perfIssues = summary.performance_violations || 0;
+              
+              const status = failures === 0 ? '✅' : '❌';
+              const perfStatus = perfIssues === 0 ? '✅' : '⚠️';
+              
+              const body = `## ${status} End-to-End Test Results
+              
+              | Metric | Value |
+              |--------|-------|
+              | Pass Rate | ${passRate.toFixed(1)}% |
+              | Duration | ${duration.toFixed(1)} minutes |
+              | Critical Failures | ${failures} |
+              | Performance Issues | ${perfIssues} ${perfStatus} |
+              
+              ${failures > 0 ? '### ❌ Failed Tests\n' + 
+                report.results?.flatMap(suite => 
+                  suite.test_cases?.filter(tc => tc.status === 'Failed')
+                    .map(tc => `- \`${suite.test_suite}::${tc.name}\`: ${tc.error_message || 'Unknown error'}`)
+                ).slice(0, 5).join('\n') || 'No details available' : ''}
+              
+              ${perfIssues > 0 ? '\n### ⚠️ Performance Issues Detected\nReview the full report for details.' : ''}
+              
+              [View Full Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+              `;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            } catch (error) {
+              console.error('Failed to create PR comment:', error);
+            }
+
+      - name: Set job status
+        if: always()
+        run: |
+          if [ "${{ steps.run_tests.outputs.test_status }}" = "failure" ]; then
+            echo "::error title=Test Execution Failed::End-to-end tests failed to complete successfully"
+            exit 1
+          fi
+          
+          # Check for critical failures
+          if [ -f "test-results/test_report_latest.json" ]; then
+            CRITICAL_FAILURES=$(python3 -c "
+          import json
+          try:
+              with open('test-results/test_report_latest.json', 'r') as f:
+                  report = json.load(f)
+              print(report.get('summary', {}).get('critical_failures', 0))
+          except:
+              print(0)
+          ")
+            
+            if [ "$CRITICAL_FAILURES" -gt 0 ]; then
+              echo "::error title=Critical Test Failures::$CRITICAL_FAILURES critical test failures detected"
+              exit 1
+            fi
+          fi
+          
+          echo "::notice title=Tests Completed::End-to-end tests completed successfully"
+
+  notify-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: end-to-end-tests
+    if: failure() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    
+    steps:
+      - name: Notify team of test failures
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const title = `🚨 End-to-End Tests Failed on ${context.ref.replace('refs/heads/', '')}`;
+            const body = `
+            End-to-end tests have failed on the ${context.ref.replace('refs/heads/', '')} branch.
+            
+            **Commit:** ${context.sha.substring(0, 7)}
+            **Workflow:** [${context.workflow}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+            
+            Please investigate and fix the failing tests.
+            `;
+            
+            // Create an issue for tracking the failure
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['bug', 'ci-failure', 'end-to-end-tests']
+            });

@@ -25,14 +25,25 @@ toml = "0.8"
 
 # Signal emission dependencies
 redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
-rdkafka = { version = "0.36", features = ["cmake-build", "ssl", "sasl"] }
+rdkafka = { version = "0.36", features = ["tokio", "cmake-build", "ssl", "sasl"] }
 async-trait = "0.1"
 rand = "0.8"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+sha2 = "0.10"
+hmac = "0.12"
+md5 = "0.7"
+
+# Metrics and monitoring
+prometheus = { version = "0.13", features = ["process"] }
+hyper = { version = "0.14", features = ["server", "http1", "http2", "tcp"] }
 
 [dev-dependencies]
 tracing-subscriber = "0.3"
 criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
 rand = "0.8"
+tempfile = "3.0"
+testcontainers = "0.15"
+testcontainers-modules = { version = "0.3", features = ["redis", "kafka"] }
 
 [[bench]]
 name = "hmm_integration_benchmarks"

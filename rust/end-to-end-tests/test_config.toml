@@ -1,0 +1,50 @@
+# IMP End-to-End Test Configuration
+
+[pipeline_tests]
+test_symbols = ["BTCUSDT", "ETHUSDT"]
+test_duration_hours = 24
+data_interval = "5m"
+include_edge_cases = true
+validate_against_reference = true
+reference_data_dir = "test_data/reference"
+
+[failure_tests]
+test_hmm_failures = true
+test_redis_failures = true
+test_kafka_failures = true
+test_data_corruption = true
+failure_duration_seconds = 30
+recovery_timeout_seconds = 60
+failure_scenario_count = 5
+
+[performance_tests]
+max_end_to_end_latency_ms = 100
+min_throughput_signals_per_second = 10.0
+max_memory_usage_mb = 512
+concurrent_symbols = 5
+test_duration_minutes = 10
+performance_tolerance = 0.1
+
+[data_generation]
+market_scenarios = ["trending_up", "trending_down", "sideways", "high_volatility"]
+include_gaps = true
+include_outliers = true
+base_price = 50000.0
+volatility_factor = 0.02
+random_seed = 42
+output_dir = "test_data/generated"
+
+[validation]
+feature_tolerance = 0.001
+signal_tolerance = 0.01
+performance_tolerance = 0.1
+strict_mode = false
+validation_timeout_seconds = 30
+
+[execution]
+max_parallel_tests = 4
+test_timeout_seconds = 300
+verbose_logging = false
+output_dir = "test_results"
+generate_html_reports = true
+generate_json_reports = true

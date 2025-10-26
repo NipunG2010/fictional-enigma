@@ -1,12 +1,97 @@
+//! # Signal Fusion & Emission
+//!
+//! A high-performance Rust crate for trading signal fusion and emission to message bus 
+//! infrastructure (Redis Streams/Kafka) with comprehensive audit logging and monitoring.
+//!
+//! ## Quick Start
+//!
+//! ```rust
+//! use signal_fusion::{SignalFusion, TradingSignal, SignalSide};
+//! use signal_fusion::emission::{SignalPublisher, SignalEmissionConfig};
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Load configuration
+//! let config = SignalEmissionConfig::from_file("signal_emission.toml")?;
+//!
+//! // Create signal publisher
+//! let mut publisher = SignalPublisher::new(config.publisher).await?;
+//!
+//! // Create and publish a trading signal
+//! let signal = TradingSignal {
+//!     timestamp: chrono::Utc::now().timestamp_millis(),
+//!     symbol: "BTCUSDT".to_string(),
+//!     side: SignalSide::Buy,
+//!     strength: 0.75,
+//!     confidence: 0.85,
+//!     // ... other required fields
+//! };
+//!
+//! publisher.publish_signal(signal).await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Core Modules
+//!
+//! - [`emission`] - Signal emission to Redis/Kafka with audit logging
+//! - [`config`] - HMM integration configuration management  
+//! - [`hmm_client`] - HTTP client for HMM microservice communication
+//! - [`weight_cache`] - Caching layer for HMM weights with TTL
+//! - [`metrics`] - Performance metrics collection and export
+//! - [`signal_emitter`] - High-level signal emission interface
+//! - [`signal_pipeline`] - Complete signal processing pipeline
+//!
+//! ## Signal Emission Features
+//!
+//! The [`emission`] module provides:
+//!
+//! - **Multi-Backend Publishing**: Redis Streams and Kafka topics
+//! - **Reliability**: Circuit breakers, retry logic, local buffering
+//! - **Audit Logging**: Comprehensive audit trails with S3 archival
+//! - **Monitoring**: Prometheus metrics and health endpoints
+//! - **Validation**: Schema validation with configurable rules
+//! - **Configuration**: TOML files with environment variable overrides
+//!
+//! See the [`emission`] module documentation for detailed usage examples.
+
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, warn};
+use tracing::{debug, info, warn, error};
 
 pub mod config;
 pub mod hmm_client;
 pub mod weight_cache;
 pub mod metrics;
+
+/// Signal emission to message bus infrastructure with audit logging
+/// 
+/// This module provides comprehensive signal emission capabilities including:
+/// - Redis Streams and Kafka topic publishing
+/// - Circuit breakers and retry logic for reliability
+/// - Local buffering during outages
+/// - Comprehensive audit logging with S3 archival
+/// - Prometheus metrics and health monitoring
+/// - Signal validation with configurable rules
+/// 
+/// # Quick Start
+/// 
+/// ```rust
+/// use signal_fusion::emission::{SignalPublisher, SignalEmissionConfig};
+/// 
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let config = SignalEmissionConfig::from_file("config.toml")?;
+/// let mut publisher = SignalPublisher::new(config.publisher).await?;
+/// 
+/// // Publish signals...
+/// # Ok(())
+/// # }
+/// ```
 pub mod emission;
+
+pub mod signal_emitter;
+pub mod signal_pipeline;
 
 // Re-export commonly used types
 pub use config::HmmIntegrationConfig;
@@ -15,6 +100,12 @@ pub use metrics::{MetricsCollector, HmmIntegrationMetrics, MetricsFormat, export
 pub use emission::{SignalEmissionError, Result as EmissionResult};
 pub use emission::publisher::{PublisherTrait, PublishResult, HealthStatus, HealthLevel, RetryConfig};
 pub use emission::validation::{SignalValidator, ValidationConfig, ValidationError};
+pub use emission::buffer::{SignalBuffer, BufferConfig, BufferedSignal, BufferMetrics, OverflowStrategy, PersistenceConfig};
+pub use emission::signal_publisher::{SignalPublisher, SignalPublisherConfig, PublisherBackend, SignalPublisherMetrics};
+pub use emission::config::{SignalEmissionConfig, ConfigMetadata, ConfigSource, ConfigSummary, ConfigWatcher};
+pub use emission::health_monitor::{HealthMonitor, HealthMonitorConfig, HealthHttpConfig, ComponentHealth, ServiceHealth, ServiceMetrics, HealthHttpServer};
+pub use signal_emitter::{SignalEmitter, SignalEmitterConfig};
+pub use signal_pipeline::{SignalPipeline, SignalPipelineConfig, PipelineMetrics, PipelineResult, PipelineStatistics};
 
 // Signal validation constants
 const SIGNAL_MIN: f32 = -1.0;
@@ -327,6 +418,7 @@ pub struct SignalFusion {
     cooldown_period: u64, // seconds
     last_signal_time: Option<i64>,
     normalize_weights: bool,
+    signal_emitter: Option<SignalEmitter>,
 }
 
 impl SignalFusion {
@@ -336,6 +428,7 @@ impl SignalFusion {
             cooldown_period,
             last_signal_time: None,
             normalize_weights: true,
+            signal_emitter: None,
         }
     }
 
@@ -345,10 +438,271 @@ impl SignalFusion {
             cooldown_period,
             last_signal_time: None,
             normalize_weights,
+            signal_emitter: None,
         }
     }
     
-    pub fn fuse_signals(
+    /// Create a new SignalFusion with signal emission enabled
+    pub async fn with_emission(
+        threshold: f32,
+        cooldown_period: u64,
+        emitter_config: SignalEmitterConfig,
+    ) -> Result<Self> {
+        let emitter = SignalEmitter::new(emitter_config).await
+            .map_err(|e| anyhow::anyhow!("Failed to initialize signal emitter: {}", e))?;
+        
+        Ok(Self {
+            threshold,
+            cooldown_period,
+            last_signal_time: None,
+            normalize_weights: true,
+            signal_emitter: Some(emitter),
+        })
+    }
+    
+    /// Create a new SignalFusion with signal emission and custom normalization
+    pub async fn with_emission_and_normalization(
+        threshold: f32,
+        cooldown_period: u64,
+        normalize_weights: bool,
+        emitter_config: SignalEmitterConfig,
+    ) -> Result<Self> {
+        let emitter = SignalEmitter::new(emitter_config).await
+            .map_err(|e| anyhow::anyhow!("Failed to initialize signal emitter: {}", e))?;
+        
+        Ok(Self {
+            threshold,
+            cooldown_period,
+            last_signal_time: None,
+            normalize_weights,
+            signal_emitter: Some(emitter),
+        })
+    }
+    
+    /// Set the signal emitter (for existing instances)
+    pub fn set_signal_emitter(&mut self, emitter: SignalEmitter) {
+        self.signal_emitter = Some(emitter);
+    }
+    
+    /// Remove the signal emitter (disable emission)
+    pub fn remove_signal_emitter(&mut self) {
+        self.signal_emitter = None;
+    }
+    
+    pub async fn fuse_signals(
+        &mut self,
+        components: SignalComponents,
+        weights: FusionWeights,
+        timestamp: i64,
+        symbol: &str,
+        model_version: Option<&str>,
+        correlation_id: Option<String>,
+        feature_checksum: Option<String>,
+        generation_latency_ms: u64,
+    ) -> Result<Option<TradingSignal>> {
+        // Generate correlation ID and feature checksum if not provided
+        let correlation_id = correlation_id.unwrap_or_else(|| {
+            if let Some(ref emitter) = self.signal_emitter {
+                emitter.generate_correlation_id()
+            } else {
+                format!("fusion-{}-{}", symbol, timestamp)
+            }
+        });
+        
+        let feature_checksum = feature_checksum.unwrap_or_else(|| {
+            if let Some(ref emitter) = self.signal_emitter {
+                emitter.generate_feature_checksum(&components, &weights, symbol, timestamp)
+            } else {
+                format!("checksum-{}-{}", symbol, timestamp)
+            }
+        });
+        
+        let model_version = model_version.unwrap_or_else(|| {
+            if let Some(ref emitter) = self.signal_emitter {
+                emitter.model_version()
+            } else {
+                "v1.0"
+            }
+        });
+
+        // Validate input signals (Requirement 5.3)
+        if let Err(e) = components.validate() {
+            warn!("Invalid signal components for {}: {}", symbol, e);
+            bail!("Signal validation failed: {}", e);
+        }
+
+        // Validate weights
+        if let Err(e) = weights.validate() {
+            warn!("Invalid fusion weights for {}: {}", symbol, e);
+            bail!("Weight validation failed: {}", e);
+        }
+
+        debug!(
+            "Fusing signals for {} at timestamp {} (correlation_id: {}): components=[LDC:{:.3}, MR:{:.3}, TSMOM:{:.3}], weights=[LDC:{:.3}, MR:{:.3}, TSMOM:{:.3}]",
+            symbol, timestamp, correlation_id, components.s_ldc, components.s_mr, components.s_tsmom,
+            weights.w_ldc, weights.w_mr, weights.w_tsmom
+        );
+
+        // Normalize weights if enabled (Requirement 5.2)
+        let final_weights = if self.normalize_weights {
+            let normalized = weights.normalize();
+            debug!(
+                "Normalized weights for {}: [LDC:{:.3}, MR:{:.3}, TSMOM:{:.3}]",
+                symbol, normalized.w_ldc, normalized.w_mr, normalized.w_tsmom
+            );
+            normalized
+        } else {
+            weights
+        };
+
+        // Check cooldown (Requirement 5.4)
+        if let Some(last_time) = self.last_signal_time {
+            let time_since_last = timestamp - last_time;
+            if time_since_last < self.cooldown_period as i64 {
+                debug!(
+                    "Signal for {} suppressed by cooldown: {}s since last signal (cooldown: {}s)",
+                    symbol, time_since_last, self.cooldown_period
+                );
+                return Ok(None);
+            }
+        }
+        
+        // Compute fused signal (Requirement 5.1)
+        let fused_signal = 
+            components.s_ldc * final_weights.w_ldc +
+            components.s_mr * final_weights.w_mr +
+            components.s_tsmom * final_weights.w_tsmom;
+        
+        debug!(
+            "Computed fused signal for {}: {:.4}",
+            symbol, fused_signal
+        );
+
+        // Apply threshold (Requirement 5.4)
+        if fused_signal.abs() < self.threshold {
+            debug!(
+                "Fused signal {:.4} below threshold {:.4} for {}",
+                fused_signal.abs(), self.threshold, symbol
+            );
+            return Ok(None);
+        }
+        
+        // Determine side
+        let side = if fused_signal > 0.0 { SignalSide::Buy } else { SignalSide::Sell };
+        
+        // Calculate confidence (normalized to [0, 1])
+        let confidence = fused_signal.abs().min(1.0);
+        
+        // Log fusion operation (Requirement 5.5)
+        info!(
+            "Generated {} signal for {}: strength={:.4}, confidence={:.4}, components=[LDC:{:.3}, MR:{:.3}, TSMOM:{:.3}], weights=[LDC:{:.3}, MR:{:.3}, TSMOM:{:.3}], correlation_id={}",
+            side, symbol, fused_signal, confidence,
+            components.s_ldc, components.s_mr, components.s_tsmom,
+            final_weights.w_ldc, final_weights.w_mr, final_weights.w_tsmom,
+            correlation_id
+        );
+
+        let signal = TradingSignal::new(
+            timestamp,
+            symbol.to_string(),
+            side,
+            fused_signal,
+            confidence,
+            components,
+            final_weights,
+            model_version.to_string(),
+            correlation_id.clone(),
+            feature_checksum,
+            generation_latency_ms,
+        );
+        
+        // Emit signal if emitter is configured
+        if let Some(ref emitter) = self.signal_emitter {
+            match emitter.emit_signal(signal.clone()).await {
+                Ok(emitted) => {
+                    if emitted {
+                        debug!("Signal emitted successfully: {}", signal.to_compact_string());
+                    } else {
+                        debug!("Signal emission skipped: {}", signal.to_compact_string());
+                    }
+                }
+                Err(emission_error) => {
+                    error!("Signal emission failed: {} - {}", emission_error, signal.to_compact_string());
+                    
+                    // Check if we should fail the entire operation
+                    let emitter_config = emitter.get_config();
+                    if emitter_config.fail_on_emission_error {
+                        bail!("Signal emission failed: {}", emission_error);
+                    }
+                    
+                    warn!("Continuing despite emission failure due to configuration");
+                }
+            }
+        }
+        
+        self.last_signal_time = Some(timestamp);
+        
+        Ok(Some(signal))
+    }
+
+    /// Get the current threshold value
+    pub fn threshold(&self) -> f32 {
+        self.threshold
+    }
+
+    /// Get the cooldown period in seconds
+    pub fn cooldown_period(&self) -> u64 {
+        self.cooldown_period
+    }
+
+    /// Get the timestamp of the last signal
+    pub fn last_signal_time(&self) -> Option<i64> {
+        self.last_signal_time
+    }
+
+    /// Check if a signal would be suppressed by cooldown
+    pub fn is_in_cooldown(&self, current_timestamp: i64) -> bool {
+        if let Some(last_time) = self.last_signal_time {
+            current_timestamp - last_time < self.cooldown_period as i64
+        } else {
+            false
+        }
+    }
+    
+    /// Check if signal emission is enabled
+    pub fn is_emission_enabled(&self) -> bool {
+        self.signal_emitter.as_ref().map_or(false, |e| e.is_enabled())
+    }
+    
+    /// Get the signal emitter configuration
+    pub fn get_emitter_config(&self) -> Option<&SignalEmitterConfig> {
+        self.signal_emitter.as_ref().map(|e| e.get_config())
+    }
+    
+    /// Perform health check on the signal emission system
+    pub async fn emission_health_check(&self) -> Result<bool> {
+        if let Some(ref emitter) = self.signal_emitter {
+            emitter.health_check().await
+                .map_err(|e| anyhow::anyhow!("Emission health check failed: {}", e))
+        } else {
+            Ok(true) // No emitter means no health issues
+        }
+    }
+    
+    /// Shutdown the signal fusion system including emission
+    pub async fn shutdown(&self) -> Result<()> {
+        if let Some(ref emitter) = self.signal_emitter {
+            emitter.shutdown().await
+                .map_err(|e| anyhow::anyhow!("Failed to shutdown signal emitter: {}", e))?;
+        }
+        Ok(())
+    }
+    
+    /// Backward-compatible synchronous version of fuse_signals (without emission)
+    /// 
+    /// This method maintains the original API for existing code that doesn't need signal emission.
+    /// For new code that wants signal emission, use the async `fuse_signals` method.
+    pub fn fuse_signals_sync(
         &mut self,
         components: SignalComponents,
         weights: FusionWeights,
@@ -359,6 +713,7 @@ impl SignalFusion {
         feature_checksum: String,
         generation_latency_ms: u64,
     ) -> Result<Option<TradingSignal>> {
+        // This is the original implementation without emission
         // Validate input signals (Requirement 5.3)
         if let Err(e) = components.validate() {
             warn!("Invalid signal components for {}: {}", symbol, e);
@@ -454,30 +809,6 @@ impl SignalFusion {
         
         Ok(Some(signal))
     }
-
-    /// Get the current threshold value
-    pub fn threshold(&self) -> f32 {
-        self.threshold
-    }
-
-    /// Get the cooldown period in seconds
-    pub fn cooldown_period(&self) -> u64 {
-        self.cooldown_period
-    }
-
-    /// Get the timestamp of the last signal
-    pub fn last_signal_time(&self) -> Option<i64> {
-        self.last_signal_time
-    }
-
-    /// Check if a signal would be suppressed by cooldown
-    pub fn is_in_cooldown(&self, current_timestamp: i64) -> bool {
-        if let Some(last_time) = self.last_signal_time {
-            current_timestamp - last_time < self.cooldown_period as i64
-        } else {
-            false
-        }
-    }
 }
 
 #[cfg(test)]
@@ -491,8 +822,8 @@ mod tests {
         assert_eq!(fusion.cooldown_period(), 60);
     }
     
-    #[test]
-    fn test_fuse_signals_above_threshold() {
+    #[tokio::test]
+    async fn test_fuse_signals_above_threshold() {
         let mut fusion = SignalFusion::new(0.3, 0);
         
         let components = SignalComponents {
@@ -512,6 +843,42 @@ mod tests {
             weights,
             1000,
             "BTCUSDT",
+            Some("v1.0"),
+            Some("test-correlation-123".to_string()),
+            Some("feature-checksum-abc".to_string()),
+            50,
+        ).await.unwrap();
+        
+        assert!(result.is_some());
+        let signal = result.unwrap();
+        assert_eq!(signal.symbol, "BTCUSDT");
+        assert_eq!(signal.side, SignalSide::Buy);
+        assert_eq!(signal.correlation_id, "test-correlation-123");
+        assert_eq!(signal.feature_checksum, "feature-checksum-abc");
+        assert_eq!(signal.generation_latency_ms, 50);
+    }
+    
+    #[test]
+    fn test_fuse_signals_sync_above_threshold() {
+        let mut fusion = SignalFusion::new(0.3, 0);
+        
+        let components = SignalComponents {
+            s_ldc: 0.8,
+            s_mr: 0.2,
+            s_tsmom: 0.1,
+        };
+        
+        let weights = FusionWeights {
+            w_ldc: 0.5,
+            w_mr: 0.3,
+            w_tsmom: 0.2,
+        };
+        
+        let result = fusion.fuse_signals_sync(
+            components,
+            weights,
+            1000,
+            "BTCUSDT",
             "v1.0",
             "test-correlation-123".to_string(),
             "feature-checksum-abc".to_string(),
@@ -527,8 +894,8 @@ mod tests {
         assert_eq!(signal.generation_latency_ms, 50);
     }
     
-    #[test]
-    fn test_fuse_signals_below_threshold() {
+    #[tokio::test]
+    async fn test_fuse_signals_below_threshold() {
         let mut fusion = SignalFusion::new(0.5, 0);
         
         let components = SignalComponents {
@@ -548,13 +915,129 @@ mod tests {
             weights,
             1000,
             "BTCUSDT",
-            "v1.0",
-            "test-correlation-456".to_string(),
-            "feature-checksum-def".to_string(),
+            Some("v1.0"),
+            Some("test-correlation-456".to_string()),
+            Some("feature-checksum-def".to_string()),
             25,
-        ).unwrap();
+        ).await.unwrap();
         
         assert!(result.is_none());
+    }
+    
+    #[tokio::test]
+    async fn test_fuse_signals_with_emission_disabled() {
+        let emitter_config = SignalEmitterConfig::default(); // Disabled by default
+        let mut fusion = SignalFusion::with_emission(0.3, 0, emitter_config).await.unwrap();
+        
+        assert!(!fusion.is_emission_enabled());
+        
+        let components = SignalComponents {
+            s_ldc: 0.8,
+            s_mr: 0.2,
+            s_tsmom: 0.1,
+        };
+        
+        let weights = FusionWeights {
+            w_ldc: 0.5,
+            w_mr: 0.3,
+            w_tsmom: 0.2,
+        };
+        
+        let result = fusion.fuse_signals(
+            components,
+            weights,
+            1000,
+            "BTCUSDT",
+            None, // Should use emitter's model version
+            None, // Should generate correlation ID
+            None, // Should generate feature checksum
+            50,
+        ).await.unwrap();
+        
+        assert!(result.is_some());
+        let signal = result.unwrap();
+        assert_eq!(signal.symbol, "BTCUSDT");
+        assert_eq!(signal.side, SignalSide::Buy);
+        assert_eq!(signal.model_version, "v1.0"); // Default from emitter
+        assert!(!signal.correlation_id.is_empty());
+        assert!(!signal.feature_checksum.is_empty());
+    }
+    
+    #[tokio::test]
+    async fn test_fuse_signals_with_emission_enabled() {
+        let publisher_config = SignalPublisherConfig {
+            backend: PublisherBackend::None, // Use None backend for testing
+            enabled: true,
+            ..Default::default()
+        };
+        
+        let emitter_config = SignalEmitterConfig::enabled(publisher_config)
+            .with_model_version("v2.0".to_string());
+        
+        let mut fusion = SignalFusion::with_emission(0.3, 0, emitter_config).await.unwrap();
+        
+        assert!(fusion.is_emission_enabled());
+        
+        let components = SignalComponents {
+            s_ldc: 0.8,
+            s_mr: 0.2,
+            s_tsmom: 0.1,
+        };
+        
+        let weights = FusionWeights {
+            w_ldc: 0.5,
+            w_mr: 0.3,
+            w_tsmom: 0.2,
+        };
+        
+        let result = fusion.fuse_signals(
+            components,
+            weights,
+            1000,
+            "BTCUSDT",
+            None,
+            None,
+            None,
+            50,
+        ).await.unwrap();
+        
+        assert!(result.is_some());
+        let signal = result.unwrap();
+        assert_eq!(signal.symbol, "BTCUSDT");
+        assert_eq!(signal.side, SignalSide::Buy);
+        assert_eq!(signal.model_version, "v2.0"); // Custom model version
+        assert!(!signal.correlation_id.is_empty());
+        assert!(!signal.feature_checksum.is_empty());
+    }
+    
+    #[tokio::test]
+    async fn test_signal_fusion_health_check() {
+        let publisher_config = SignalPublisherConfig {
+            backend: PublisherBackend::None,
+            enabled: true,
+            ..Default::default()
+        };
+        
+        let emitter_config = SignalEmitterConfig::enabled(publisher_config);
+        let fusion = SignalFusion::with_emission(0.3, 0, emitter_config).await.unwrap();
+        
+        let health = fusion.emission_health_check().await.unwrap();
+        assert!(health); // Should be healthy with None backend
+    }
+    
+    #[tokio::test]
+    async fn test_signal_fusion_shutdown() {
+        let publisher_config = SignalPublisherConfig {
+            backend: PublisherBackend::None,
+            enabled: true,
+            ..Default::default()
+        };
+        
+        let emitter_config = SignalEmitterConfig::enabled(publisher_config);
+        let fusion = SignalFusion::with_emission(0.3, 0, emitter_config).await.unwrap();
+        
+        let result = fusion.shutdown().await;
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -657,8 +1140,8 @@ mod tests {
         assert!((normalized.w_tsmom - 0.34).abs() < 0.01);
     }
 
-    #[test]
-    fn test_cooldown_logic() {
+    #[tokio::test]
+    async fn test_cooldown_logic() {
         let mut fusion = SignalFusion::new(0.3, 60);
         
         let components = SignalComponents {
@@ -679,11 +1162,11 @@ mod tests {
             weights.clone(),
             1000,
             "BTCUSDT",
-            "v1.0",
-            "test-correlation-1".to_string(),
-            "checksum-1".to_string(),
+            Some("v1.0"),
+            Some("test-correlation-1".to_string()),
+            Some("checksum-1".to_string()),
             30,
-        ).unwrap();
+        ).await.unwrap();
         assert!(result1.is_some());
         
         // Second signal within cooldown should be suppressed
@@ -692,11 +1175,11 @@ mod tests {
             weights.clone(),
             1030, // 30 seconds later, within 60s cooldown
             "BTCUSDT",
-            "v1.0",
-            "test-correlation-2".to_string(),
-            "checksum-2".to_string(),
+            Some("v1.0"),
+            Some("test-correlation-2".to_string()),
+            Some("checksum-2".to_string()),
             25,
-        ).unwrap();
+        ).await.unwrap();
         assert!(result2.is_none());
         
         // Third signal after cooldown should succeed
@@ -705,16 +1188,16 @@ mod tests {
             weights,
             1070, // 70 seconds after first, beyond cooldown
             "BTCUSDT",
-            "v1.0",
-            "test-correlation-3".to_string(),
-            "checksum-3".to_string(),
+            Some("v1.0"),
+            Some("test-correlation-3".to_string()),
+            Some("checksum-3".to_string()),
             35,
-        ).unwrap();
+        ).await.unwrap();
         assert!(result3.is_some());
     }
 
-    #[test]
-    fn test_is_in_cooldown() {
+    #[tokio::test]
+    async fn test_is_in_cooldown() {
         let mut fusion = SignalFusion::new(0.3, 60);
         
         // No signal yet, not in cooldown
@@ -738,11 +1221,11 @@ mod tests {
             weights, 
             1000, 
             "BTCUSDT", 
-            "v1.0",
-            "test-correlation".to_string(),
-            "checksum".to_string(),
+            Some("v1.0"),
+            Some("test-correlation".to_string()),
+            Some("checksum".to_string()),
             20,
-        ).unwrap();
+        ).await.unwrap();
         
         // Should be in cooldown
         assert!(fusion.is_in_cooldown(1030));
@@ -751,8 +1234,8 @@ mod tests {
         assert!(!fusion.is_in_cooldown(1070));
     }
 
-    #[test]
-    fn test_fuse_signals_with_invalid_components() {
+    #[tokio::test]
+    async fn test_fuse_signals_with_invalid_components() {
         let mut fusion = SignalFusion::new(0.3, 0);
         
         let components = SignalComponents {
@@ -772,17 +1255,17 @@ mod tests {
             weights,
             1000,
             "BTCUSDT",
-            "v1.0",
-            "test-correlation".to_string(),
-            "checksum".to_string(),
+            Some("v1.0"),
+            Some("test-correlation".to_string()),
+            Some("checksum".to_string()),
             30,
-        );
+        ).await;
         
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_fuse_signals_with_invalid_weights() {
+    #[tokio::test]
+    async fn test_fuse_signals_with_invalid_weights() {
         let mut fusion = SignalFusion::new(0.3, 0);
         
         let components = SignalComponents {
@@ -802,17 +1285,17 @@ mod tests {
             weights,
             1000,
             "BTCUSDT",
-            "v1.0",
-            "test-correlation".to_string(),
-            "checksum".to_string(),
+            Some("v1.0"),
+            Some("test-correlation".to_string()),
+            Some("checksum".to_string()),
             30,
-        );
+        ).await;
         
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_fusion_without_normalization() {
+    #[tokio::test]
+    async fn test_fusion_without_normalization() {
         let mut fusion = SignalFusion::with_normalization(0.3, 0, false);
         
         let components = SignalComponents {
@@ -832,11 +1315,11 @@ mod tests {
             weights.clone(),
             1000,
             "BTCUSDT",
-            "v1.0",
-            "test-correlation".to_string(),
-            "checksum".to_string(),
+            Some("v1.0"),
+            Some("test-correlation".to_string()),
+            Some("checksum".to_string()),
             30,
-        ).unwrap();
+        ).await.unwrap();
         
         assert!(result.is_some());
         let signal = result.unwrap();
@@ -847,8 +1330,8 @@ mod tests {
         assert_eq!(signal.weights.w_tsmom, weights.w_tsmom);
     }
 
-    #[test]
-    fn test_sell_signal_generation() {
+    #[tokio::test]
+    async fn test_sell_signal_generation() {
         let mut fusion = SignalFusion::new(0.3, 0);
         
         let components = SignalComponents {
@@ -868,11 +1351,11 @@ mod tests {
             weights,
             1000,
             "BTCUSDT",
-            "v1.0",
-            "test-correlation".to_string(),
-            "checksum".to_string(),
+            Some("v1.0"),
+            Some("test-correlation".to_string()),
+            Some("checksum".to_string()),
             30,
-        ).unwrap();
+        ).await.unwrap();
         
         assert!(result.is_some());
         let signal = result.unwrap();

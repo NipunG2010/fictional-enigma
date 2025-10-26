@@ -1,0 +1,252 @@
+/* IMP End-to-End Test Report Styles */
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: #f5f5f5;
+}
+
+.header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 30px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.header h1 {
+    margin: 0 0 10px 0;
+    font-size: 2.5em;
+    font-weight: 300;
+}
+
+.header p {
+    margin: 5px 0;
+    opacity: 0.9;
+}
+
+.summary {
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.summary h2 {
+    color: #2c3e50;
+    margin-top: 0;
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 10px;
+}
+
+.summary p {
+    margin: 10px 0;
+    font-size: 1.1em;
+}
+
+.summary strong {
+    color: #2c3e50;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    align-items: center;
+}
+
+.summary-stats {
+    /* Stats on the left */
+}
+
+.summary-charts {
+    /* Charts on the right */
+    display: flex;
+    justify-content: center;
+}
+
+.summary-charts canvas {
+    max-width: 300px;
+    max-height: 200px;
+}
+
+.results {
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.results h2 {
+    color: #2c3e50;
+    margin-top: 0;
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 10px;
+}
+
+.test-suite {
+    margin-bottom: 30px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.test-suite h3 {
+    background: #f8f9fa;
+    margin: 0;
+    padding: 15px 20px;
+    color: #2c3e50;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.test-suite > p {
+    padding: 10px 20px;
+    margin: 0;
+    background: #fafafa;
+    border-bottom: 1px solid #e0e0e0;
+    font-size: 0.95em;
+    color: #666;
+}
+
+.test-cases {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0;
+}
+
+.test-cases thead {
+    background: #34495e;
+    color: white;
+}
+
+.test-cases th {
+    padding: 12px 15px;
+    text-align: left;
+    font-weight: 600;
+}
+
+.test-cases td {
+    padding: 10px 15px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.test-cases tr:hover {
+    background: #f8f9fa;
+}
+
+.test-cases tr.passed td:first-child {
+    border-left: 4px solid #27ae60;
+}
+
+.test-cases tr.failed td:first-child {
+    border-left: 4px solid #e74c3c;
+}
+
+.test-cases tr.timeout td:first-child {
+    border-left: 4px solid #f39c12;
+}
+
+.test-cases tr.skipped td:first-child {
+    border-left: 4px solid #95a5a6;
+}
+
+.passed {
+    background-color: #d5f4e6 !important;
+}
+
+.failed {
+    background-color: #ffeaea !important;
+}
+
+.timeout {
+    background-color: #fff3cd !important;
+}
+
+.skipped {
+    background-color: #f8f9fa !important;
+}
+
+.recommendations {
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.recommendations h2 {
+    color: #2c3e50;
+    margin-top: 0;
+    border-bottom: 2px solid #e67e22;
+    padding-bottom: 10px;
+}
+
+.recommendations ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+.recommendations li {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 5px;
+    padding: 15px;
+    margin: 10px 0;
+    position: relative;
+    padding-left: 45px;
+}
+
+.recommendations li:before {
+    content: "⚠️";
+    position: absolute;
+    left: 15px;
+    top: 15px;
+    font-size: 1.2em;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+    
+    .header h1 {
+        font-size: 2em;
+    }
+    
+    .test-cases {
+        font-size: 0.9em;
+    }
+    
+    .test-cases th,
+    .test-cases td {
+        padding: 8px 10px;
+    }
+}
+
+/* Print styles */
+@media print {
+    body {
+        background: white;
+        color: black;
+    }
+    
+    .header {
+        background: #333 !important;
+        color: white !important;
+    }
+    
+    .summary,
+    .results,
+    .recommendations {
+        box-shadow: none;
+        border: 1px solid #ccc;
+    }
+}

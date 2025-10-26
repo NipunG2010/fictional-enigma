@@ -1,0 +1,357 @@
+# Signal Emission Configuration Example
+# Copy this file to signal_emission.toml and customize for your environment
+
+# =============================================================================
+# Publisher Configuration
+# =============================================================================
+[publisher]
+# Enable or disable signal emission (useful for testing)
+enabled = true
+
+# Backend selection: "redis", "kafka", "both", or "none"
+# - "redis": Publish only to Redis Streams
+# - "kafka": Publish only to Kafka topics  
+# - "both": Publish to both Redis and Kafka
+# - "none": Disable publishing (for testing)
+backend = "redis"
+
+# Batch size for bulk operations (signals per batch)
+batch_size = 100
+
+# Maximum time to wait before flushing batch (milliseconds)
+flush_interval_ms = 1000
+
+# Retry policy for failed operations
+[publisher.retry_policy]
+max_attempts = 3                 # Maximum number of retry attempts
+base_delay_ms = 100             # Base delay between retries
+max_delay_ms = 5000             # Maximum delay between retries  
+backoff_multiplier = 2.0        # Exponential backoff multiplier
+jitter = true                   # Add random jitter to delays
+
+# Circuit breaker configuration
+[publisher.circuit_breaker]
+failure_threshold = 5           # Number of failures before opening circuit
+timeout_sec = 30               # Timeout before attempting recovery
+half_open_max_calls = 3        # Max calls in half-open state
+
+# =============================================================================
+# Redis Configuration
+# =============================================================================
+[redis]
+# Redis connection URL
+# Format: redis://[username:password@]host:port[/database]
+# Examples:
+#   redis://localhost:6379
+#   redis://:password@localhost:6379
+#   redis://user:pass@redis.example.com:6379/0
+url = "redis://localhost:6379"
+
+# Redis stream name for trading signals
+stream_name = "trading_signals"
+
+# Maximum stream length (MAXLEN) - older entries are trimmed
+# Set to 0 to disable trimming
+max_stream_length = 10000
+
+# Connection pool configuration
+connection_pool_size = 10       # Number of connections in pool
+connection_timeout_ms = 5000    # Connection timeout
+command_timeout_ms = 3000       # Command execution timeout
+
+# Stream configuration
+[redis.stream]
+# Ordering strategy for messages
+# - "fifo": First-in-first-out ordering
+# - "symbol": Order by symbol (messages for same symbol are ordered)
+ordering_strategy = "symbol"
+
+# Message ID generation strategy
+# - "auto": Let Redis generate IDs automatically (*)
+# - "timestamp": Use timestamp-based IDs
+id_strategy = "auto"
+
+# Health check configuration
+[redis.health]
+check_interval_sec = 30         # Health check interval
+timeout_ms = 1000              # Health check timeout
+max_failures = 3               # Max failures before marking unhealthy
+
+# =============================================================================
+# Kafka Configuration  
+# =============================================================================
+[kafka]
+# Kafka broker addresses
+brokers = ["localhost:9092"]
+
+# Topic name for trading signals
+topic = "trading_signals"
+
+# Partitioning strategy
+# - "symbol": Partition by symbol (same symbol goes to same partition)
+# - "round_robin": Round-robin across partitions
+# - "custom": Use custom partitioning key
+partition_strategy = "symbol"
+
+# Compression algorithm
+# Options: "none", "gzip", "snappy", "lz4", "zstd"
+compression = "gzip"
+
+# Producer configuration
+[kafka.producer]
+# Acknowledgment level
+# - "none" (0): No acknowledgment
+# - "leader" (1): Leader acknowledgment only  
+# - "all" (-1): All in-sync replicas acknowledgment
+acks = "all"
+
+# Number of retries for failed sends
+retries = 3
+
+# Batch size in bytes
+batch_size = 16384
+
+# Time to wait for additional messages before sending batch
+linger_ms = 5
+
+# Maximum time to block on send
+timeout_ms = 30000
+
+# Buffer memory for producer
+buffer_memory = 33554432
+
+# Maximum request size
+max_request_size = 1048576
+
+# Partitioning configuration
+[kafka.partitioning]
+# Custom partitioning key (used when partition_strategy = "custom")
+custom_key = "symbol"
+
+# Number of partitions (for validation)
+expected_partitions = 3
+
+# Security configuration (optional)
+[kafka.security]
+# Security protocol: "plaintext", "ssl", "sasl_plaintext", "sasl_ssl"
+protocol = "plaintext"
+
+# SSL configuration (when using SSL)
+[kafka.security.ssl]
+ca_location = "/path/to/ca-cert"
+certificate_location = "/path/to/client-cert"  
+key_location = "/path/to/client-key"
+key_password = "key-password"
+
+# SASL configuration (when using SASL)
+[kafka.security.sasl]
+mechanism = "PLAIN"
+username = "kafka-user"
+password = "kafka-password"
+
+# Health check configuration
+[kafka.health]
+check_interval_sec = 30         # Health check interval
+timeout_ms = 2000              # Health check timeout
+max_failures = 3               # Max failures before marking unhealthy
+
+# =============================================================================
+# Buffer Configuration
+# =============================================================================
+[buffer]
+# Maximum number of signals to buffer locally
+max_size = 1000
+
+# Overflow handling strategy when buffer is full
+# - "drop_oldest": Remove oldest signals to make room
+# - "drop_newest": Drop new signals when buffer is full
+# - "block": Block until space is available (not recommended)
+overflow_strategy = "drop_oldest"
+
+# Enable disk persistence for buffer recovery
+persist_to_disk = true
+
+# File path for buffer persistence
+persist_path = "/tmp/signal_buffer.json"
+
+# Persistence configuration
+[buffer.persistence]
+# Sync interval for writing buffer to disk (seconds)
+sync_interval_sec = 30
+
+# Enable compression for persisted buffer
+compress = true
+
+# Maximum file size before rotation (MB)
+max_file_size_mb = 100
+
+# =============================================================================
+# Audit Configuration
+# =============================================================================
+[audit]
+# Enable comprehensive audit logging
+enabled = true
+
+# Local audit log file path
+file_path = "/var/log/imp/signals.jsonl"
+
+# Maximum file size before rotation (MB)
+max_file_size_mb = 100
+
+# Maximum number of rotated files to keep
+max_files = 10
+
+# Log level for audit events
+# Options: "error", "warn", "info", "debug", "trace"
+log_level = "info"
+
+# Include performance metrics in audit logs
+include_metrics = true
+
+# File rotation configuration
+[audit.rotation]
+# Rotation strategy: "size", "time", "both"
+strategy = "size"
+
+# Time-based rotation interval (when strategy includes "time")
+# Options: "hourly", "daily", "weekly"
+time_interval = "daily"
+
+# S3/MinIO configuration for audit log archival
+[audit.s3]
+# S3 bucket name for audit log storage
+bucket = "imp-audit-logs"
+
+# S3 key prefix for audit logs
+prefix = "signals/"
+
+# AWS region (or MinIO endpoint region)
+region = "us-east-1"
+
+# Upload interval (seconds)
+upload_interval_sec = 300
+
+# Batch size for S3 uploads
+batch_size = 100
+
+# Enable compression for S3 uploads
+compress = true
+
+# S3 credentials (optional - can use IAM roles or environment variables)
+[audit.s3.credentials]
+access_key_id = "your-access-key"
+secret_access_key = "your-secret-key"
+
+# MinIO endpoint (optional - for MinIO instead of AWS S3)
+[audit.s3.minio]
+endpoint = "http://localhost:9000"
+force_path_style = true
+
+# =============================================================================
+# Validation Configuration
+# =============================================================================
+[validation]
+# Enable signal validation before emission
+enabled = true
+
+# Strict mode - reject signals with any validation errors
+strict_mode = true
+
+# Validation rules
+[validation.rules]
+# Timestamp validation
+max_age_sec = 300              # Maximum signal age (5 minutes)
+max_future_sec = 60            # Maximum future timestamp (1 minute)
+
+# Symbol validation
+symbol_pattern = "^[A-Z]{3,10}USDT?$"  # Regex pattern for valid symbols
+symbol_max_length = 20
+
+# Strength validation (-1.0 to 1.0)
+strength_min = -1.0
+strength_max = 1.0
+
+# Confidence validation (0.0 to 1.0)  
+confidence_min = 0.0
+confidence_max = 1.0
+
+# Component validation
+component_count_min = 1
+component_count_max = 10
+
+# Weight validation
+weight_sum_tolerance = 0.01    # Tolerance for weight sum validation
+
+# =============================================================================
+# Monitoring Configuration
+# =============================================================================
+[monitoring]
+# Enable Prometheus metrics export
+prometheus_enabled = true
+
+# Metrics collection interval (seconds)
+collection_interval_sec = 10
+
+# Metrics retention period (seconds)
+retention_sec = 3600
+
+# Health monitoring configuration
+[monitoring.health]
+# Enable HTTP health check endpoints
+http_enabled = true
+
+# HTTP server bind address
+bind_address = "0.0.0.0:8080"
+
+# Health check endpoint path
+health_path = "/health"
+
+# Metrics endpoint path  
+metrics_path = "/metrics"
+
+# Health check interval (seconds)
+check_interval_sec = 30
+
+# Component health timeout (milliseconds)
+component_timeout_ms = 5000
+
+# Metrics server configuration
+[monitoring.metrics_server]
+# Enable standalone metrics server
+enabled = false
+
+# Metrics server bind address
+bind_address = "0.0.0.0:9090"
+
+# Metrics export format: "prometheus", "json", "both"
+export_format = "prometheus"
+
+# =============================================================================
+# Development/Testing Configuration
+# =============================================================================
+[development]
+# Enable development mode (more verbose logging, relaxed validation)
+enabled = false
+
+# Mock backends for testing (don't actually publish)
+mock_redis = false
+mock_kafka = false
+
+# Simulate network delays for testing (milliseconds)
+simulate_latency_ms = 0
+
+# Simulate failure rate for testing (0.0 to 1.0)
+simulate_failure_rate = 0.0
+
+# =============================================================================
+# Environment-Specific Overrides
+# =============================================================================
+
+# All configuration values can be overridden with environment variables
+# Format: SECTION_SUBSECTION_KEY (uppercase, underscores)
+# Examples:
+#   PUBLISHER_ENABLED=true
+#   REDIS_URL=redis://prod-redis:6379
+#   KAFKA_BROKERS=broker1:9092,broker2:9092
+#   AUDIT_ENABLED=false
+#   MONITORING_PROMETHEUS_ENABLED=true

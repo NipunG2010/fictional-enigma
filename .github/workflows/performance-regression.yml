@@ -1,0 +1,284 @@
+name: Performance Regression Detection
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'rust/**'
+      - '.github/workflows/end-to-end-tests.yml'
+      - '.github/workflows/performance-regression.yml'
+  workflow_dispatch:
+    inputs:
+      baseline_branch:
+        description: 'Baseline branch for comparison'
+        required: false
+        default: 'main'
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  performance-regression:
+    name: Performance Regression Detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@v4
+        with:
+          path: current
+
+      - name: Checkout baseline branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.baseline_branch || 'main' }}
+          path: baseline
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            current/rust/target
+            baseline/rust/target
+          key: ${{ runner.os }}-cargo-regression-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-regression-
+            ${{ runner.os }}-cargo-
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev
+
+      - name: Build baseline version
+        working-directory: baseline/rust
+        run: |
+          cargo build --release --package end-to-end-tests
+          cargo build --release --bin test-runner
+          cargo build --release --bin ci-helper
+
+      - name: Run baseline performance tests
+        working-directory: baseline/rust/end-to-end-tests
+        run: |
+          mkdir -p baseline-results
+          
+          # Generate performance test configuration
+          cargo run --release --bin ci-helper -- generate-config \
+            --environment performance \
+            --output performance_config.toml
+          
+          # Run performance-focused tests
+          timeout 1800 cargo run --release --bin test-runner -- \
+            --config performance_config.toml \
+            --output-dir baseline-results \
+            --format json \
+            --suite performance || echo "Baseline tests completed with issues"
+
+      - name: Build current version
+        working-directory: current/rust
+        run: |
+          cargo build --release --package end-to-end-tests
+          cargo build --release --bin test-runner
+          cargo build --release --bin ci-helper
+
+      - name: Run current performance tests
+        working-directory: current/rust/end-to-end-tests
+        run: |
+          mkdir -p current-results
+          
+          # Generate performance test configuration
+          cargo run --release --bin ci-helper -- generate-config \
+            --environment performance \
+            --output performance_config.toml
+          
+          # Run performance-focused tests
+          timeout 1800 cargo run --release --bin test-runner -- \
+            --config performance_config.toml \
+            --output-dir current-results \
+            --format json \
+            --suite performance || echo "Current tests completed with issues"
+
+      - name: Compare performance results
+        id: compare
+        working-directory: current/rust/end-to-end-tests
+        run: |
+          # Find the latest test reports
+          BASELINE_REPORT=$(find ../../../baseline/rust/end-to-end-tests/baseline-results -name "test_report_*.json" | sort | tail -1)
+          CURRENT_REPORT=$(find current-results -name "test_report_*.json" | sort | tail -1)
+          
+          if [ -z "$BASELINE_REPORT" ] || [ -z "$CURRENT_REPORT" ]; then
+            echo "::error title=Missing Reports::Could not find baseline or current test reports"
+            echo "regression_detected=unknown" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          echo "Comparing reports:"
+          echo "  Baseline: $BASELINE_REPORT"
+          echo "  Current: $CURRENT_REPORT"
+          
+          # Perform regression analysis
+          mkdir -p regression-analysis
+          
+          cargo run --release --bin ci-helper -- check-regressions \
+            --current "$CURRENT_REPORT" \
+            --baseline "$BASELINE_REPORT" > regression-analysis/regression_check.log 2>&1
+          
+          REGRESSION_EXIT_CODE=$?
+          
+          # Generate detailed comparison report
+          cargo run --release --bin test-report-generator -- \
+            --input "$CURRENT_REPORT" \
+            --output regression-analysis \
+            --compare "$BASELINE_REPORT"
+          
+          # Set output based on regression check
+          if [ $REGRESSION_EXIT_CODE -eq 0 ]; then
+            echo "regression_detected=false" >> $GITHUB_OUTPUT
+          else
+            echo "regression_detected=true" >> $GITHUB_OUTPUT
+          fi
+          
+          # Extract key metrics for reporting
+          python3 -c "
+          import json
+          import sys
+          
+          try:
+              with open('$CURRENT_REPORT', 'r') as f:
+                  current = json.load(f)
+              with open('$BASELINE_REPORT', 'r') as f:
+                  baseline = json.load(f)
+              
+              current_pass_rate = current['summary']['overall_pass_rate'] * 100
+              baseline_pass_rate = baseline['summary']['overall_pass_rate'] * 100
+              pass_rate_change = current_pass_rate - baseline_pass_rate
+              
+              current_duration = current['summary']['total_duration_minutes']
+              baseline_duration = baseline['summary']['total_duration_minutes']
+              duration_change = ((current_duration - baseline_duration) / baseline_duration) * 100 if baseline_duration > 0 else 0
+              
+              with open('$GITHUB_OUTPUT', 'a') as f:
+                  f.write(f'current_pass_rate={current_pass_rate:.1f}\n')
+                  f.write(f'baseline_pass_rate={baseline_pass_rate:.1f}\n')
+                  f.write(f'pass_rate_change={pass_rate_change:.1f}\n')
+                  f.write(f'current_duration={current_duration:.1f}\n')
+                  f.write(f'baseline_duration={baseline_duration:.1f}\n')
+                  f.write(f'duration_change={duration_change:.1f}\n')
+          except Exception as e:
+              print(f'Error processing reports: {e}', file=sys.stderr)
+              sys.exit(1)
+          "
+
+      - name: Upload regression analysis artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: regression-analysis-${{ github.run_number }}
+          path: |
+            current/rust/end-to-end-tests/regression-analysis/
+            current/rust/end-to-end-tests/current-results/
+            baseline/rust/end-to-end-tests/baseline-results/
+          retention-days: 14
+
+      - name: Comment PR with regression analysis
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            
+            const regressionDetected = '${{ steps.compare.outputs.regression_detected }}';
+            const currentPassRate = '${{ steps.compare.outputs.current_pass_rate }}';
+            const baselinePassRate = '${{ steps.compare.outputs.baseline_pass_rate }}';
+            const passRateChange = '${{ steps.compare.outputs.pass_rate_change }}';
+            const currentDuration = '${{ steps.compare.outputs.current_duration }}';
+            const baselineDuration = '${{ steps.compare.outputs.baseline_duration }}';
+            const durationChange = '${{ steps.compare.outputs.duration_change }}';
+            
+            let status = '✅';
+            let title = 'No Performance Regressions Detected';
+            
+            if (regressionDetected === 'true') {
+              status = '⚠️';
+              title = 'Performance Regressions Detected';
+            } else if (regressionDetected === 'unknown') {
+              status = '❓';
+              title = 'Performance Analysis Incomplete';
+            }
+            
+            const passRateStatus = parseFloat(passRateChange) < -5 ? '📉' : parseFloat(passRateChange) > 5 ? '📈' : '➡️';
+            const durationStatus = parseFloat(durationChange) > 20 ? '🐌' : parseFloat(durationChange) < -20 ? '⚡' : '➡️';
+            
+            const body = `## ${status} Performance Regression Analysis
+            
+            ### ${title}
+            
+            | Metric | Baseline | Current | Change |
+            |--------|----------|---------|--------|
+            | Pass Rate | ${baselinePassRate}% | ${currentPassRate}% | ${passRateChange}% ${passRateStatus} |
+            | Duration | ${baselineDuration} min | ${currentDuration} min | ${durationChange}% ${durationStatus} |
+            
+            ${regressionDetected === 'true' ? `
+            ### ⚠️ Regressions Detected
+            
+            Performance regressions have been detected in this PR. Please review the detailed analysis in the workflow artifacts.
+            
+            **Action Required:**
+            - Review the performance impact of your changes
+            - Consider optimizations if the regression is significant
+            - Update performance baselines if the change is intentional
+            ` : regressionDetected === 'false' ? `
+            ### ✅ Performance Impact
+            
+            No significant performance regressions detected. Your changes maintain or improve system performance.
+            ` : `
+            ### ❓ Analysis Status
+            
+            Performance analysis could not be completed. Please check the workflow logs for details.
+            `}
+            
+            [View Detailed Analysis](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Set workflow status
+        if: always()
+        run: |
+          if [ "${{ steps.compare.outputs.regression_detected }}" = "true" ]; then
+            echo "::warning title=Performance Regression::Performance regressions detected but not failing the build"
+            echo "::notice title=Review Required::Please review the performance impact of your changes"
+          elif [ "${{ steps.compare.outputs.regression_detected }}" = "false" ]; then
+            echo "::notice title=Performance Check Passed::No significant performance regressions detected"
+          else
+            echo "::error title=Analysis Failed::Performance regression analysis could not be completed"
+            exit 1
+          fi

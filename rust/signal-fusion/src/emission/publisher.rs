@@ -221,7 +221,7 @@ pub trait PublisherTrait: Send + Sync {
     /// # Returns
     /// * `Ok(HealthStatus)` - Health check completed
     /// * `Err(SignalEmissionError)` - Health check failed
-    async fn health_check(&self) -> Result<HealthStatus>;
+    async fn health_check(&mut self) -> Result<HealthStatus>;
     
     /// Get the backend name for identification
     fn backend_name(&self) -> &str;
