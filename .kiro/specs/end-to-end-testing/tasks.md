@@ -27,28 +27,28 @@ This implementation plan converts the end-to-end testing design into actionable 
   - Implement reference data loading for validation purposes
   - _Requirements: 1.2, 3.4_
 
-- [ ] 2. Implement complete pipeline integration tests
+- [x] 2. Implement complete pipeline integration tests
   - Create end-to-end signal flow validation tests
   - Add feature computation accuracy tests against reference data
   - Implement signal generation validation for LDC, MR, and TSMOM
   - Test HMM integration and regime-aware weight application
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-- [ ] 2.1 Create complete signal pipeline validation test
+- [x] 2.1 Create complete signal pipeline validation test
   - Implement test that processes OHLCV data through entire pipeline
   - Validate feature computation, signal generation, fusion, and emission
   - Add signal quality validation and format verification
   - Test correlation ID tracking and audit trail completeness
   - _Requirements: 1.1, 1.5_
 
-- [ ] 2.2 Add feature computation accuracy validation
+- [x] 2.2 Add feature computation accuracy validation
   - Create tests that validate computed features against reference values
   - Implement tolerance-based comparison for floating-point features
   - Add tests for RSI, moving averages, momentum, and volatility indicators
   - Test feature computation with various market conditions
   - _Requirements: 1.2_
 
-- [ ] 2.3 Implement signal generation validation tests
+- [x] 2.3 Implement signal generation validation tests
   - Create tests for LDC signal generation with k-NN classification
   - Add MR (mean reversion) signal validation tests
   - Implement TSMOM (momentum) signal validation tests

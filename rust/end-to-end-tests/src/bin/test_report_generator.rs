@@ -312,6 +312,7 @@ struct TrendAnalysis {
 }
 
 #[derive(serde::Serialize)]
+#[derive(Clone)]
 struct TrendDataPoint {
     timestamp: i64,
     pass_rate: f64,

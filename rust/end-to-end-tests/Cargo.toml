@@ -28,11 +28,12 @@ tempfile = "3.0"
 rand = "0.8"
 rand_chacha = "0.3"
 criterion = { version = "0.5", features = ["html_reports"] }
+clap = { version = "4.0", features = ["derive"] }
 
-# Local crates - temporarily disabled due to dependency issues
-# feature-pipeline = { path = "../feature-pipeline" }
-# ldc-engine = { path = "../ldc-engine" }
-# signal-fusion = { path = "../signal-fusion" }
+# Local crates
+feature-pipeline = { path = "../feature-pipeline" }
+# ldc-engine = { path = "../ldc-engine" }  # Temporarily disabled due to OpenSSL issues
+# signal-fusion = { path = "../signal-fusion" }  # Temporarily disabled due to OpenSSL issues
 
 # Temporarily disabled due to dependency issues
 # [[bin]]
