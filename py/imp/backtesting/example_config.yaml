@@ -1,0 +1,85 @@
+# Example Backtest Configuration
+# This is a sample configuration file for the IMP backtesting framework
+
+name: "crypto_backtest_example"
+description: "Example cryptocurrency backtesting with HMM regime detection"
+
+# Date range for backtesting
+start_date: "2024-01-01"
+end_date: "2024-03-31"
+
+# Symbols to backtest
+symbols:
+  - "BTCUSDT"
+
+# Initial capital
+initial_capital: 100000.0
+
+# Data source configuration
+data_source:
+  signals_path: "./data/signals"
+  market_data_path: "./data/market"
+  minio_endpoint: null  # Optional: "localhost:9000"
+  minio_access_key: null
+  minio_secret_key: null
+  minio_bucket: "artifacts"
+  local_cache_path: "./cache"
+
+# Signal processing configuration
+signal_processing:
+  thresholds:
+    ldc: 0.6
+    mr: 0.4
+    tsmom: 0.5
+  filters:
+    min_signal_strength: 0.3
+    max_trades_per_day: 10
+    cooldown_periods: 5
+  fusion_method: "hmm_weighted"  # or "static_weighted"
+  static_weights: null  # Required if fusion_method is "static_weighted"
+
+# Position sizing configuration
+position_sizing:
+  method: "percentage"  # Options: fixed_size, percentage, volatility_adjusted, kelly_criterion
+  fixed_size: null  # Required if method is "fixed_size"
+  percentage: 0.02  # 2% of portfolio per trade
+  volatility_lookback: 20
+  volatility_target: 0.15  # 15% annualized volatility
+  max_position_size: 0.1  # 10% max position
+  max_total_exposure: 1.0  # 100% max total exposure
+
+# Cost model configuration
+cost_model:
+  commission_rate: 0.001  # 0.1%
+  min_commission: 1.0
+  spread_costs:
+    crypto: 0.0005
+    forex: 0.00002
+    equity: 0.0001
+    futures: 0.0002
+  slippage_linear_impact: 0.0001
+  slippage_sqrt_impact: 0.001
+  asset_class: "crypto"
+
+# Performance analysis configuration
+performance:
+  benchmark_symbol: null  # Optional: "BTCUSDT" for buy-and-hold comparison
+  risk_free_rate: 0.02  # 2% annual
+  var_confidence: 0.95
+  regime_analysis: true
+  attribution_analysis: true
+
+# Walk-forward validation configuration
+walk_forward:
+  enabled: false
+  train_period: "6M"
+  test_period: "1M"
+  step_size: "2W"
+  min_train_samples: 1000
+  retrain_threshold: 0.05
+
+# Output settings
+output_path: "./backtest_results"
+save_trades: true
+save_portfolio_state: true
+generate_report: true
