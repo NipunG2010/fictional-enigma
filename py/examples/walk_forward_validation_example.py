@@ -72,17 +72,46 @@ def mock_backtest_function(
         snapshot = PortfolioSnapshot(
             timestamp=date,
             cash=current_value * 0.3,
-            market_value=current_value * 0.7,
+            positions={},  # Empty positions for mock data
             total_value=current_value,
             unrealized_pnl=(current_value - initial_capital) * 0.7,
             realized_pnl=(current_value - initial_capital) * 0.3,
-            total_pnl=current_value - initial_capital,
-            positions={}
+            total_pnl=current_value - initial_capital
         )
         snapshots.append(snapshot)
         
         # Generate some mock orders
         if day % 5 == 0:  # Trade every 5 days
+            # Create required imports
+            from imp.backtesting.trade_signal_generator import TradeSignal, TradeAction
+            from imp.backtesting.signal_processor import ProcessedSignal, SignalDirection
+            
+            # Create a mock processed signal first
+            mock_processed_signal = ProcessedSignal(
+                timestamp=date,
+                symbol="BTCUSDT",
+                direction=SignalDirection.BUY if day % 10 == 0 else SignalDirection.SELL,
+                strength=0.7,
+                signal_source="ldc",
+                raw_signals={"ldc": 0.7, "mr": 0.2, "tsmom": 0.1},
+                regime_state=1,
+                regime_weights={"ldc": 0.6, "mr": 0.2, "tsmom": 0.2},
+                metadata={"source": "mock"}
+            )
+            
+            # Create a mock trade signal
+            mock_trade_signal = TradeSignal(
+                trade_id=f"trade_{day}",
+                timestamp=date,
+                symbol="BTCUSDT",
+                action=TradeAction.BUY if day % 10 == 0 else TradeAction.SELL,
+                confidence=0.8,
+                signal_source="ldc",
+                reasoning="Mock signal for testing",
+                processed_signal=mock_processed_signal,
+                metadata={"source": "mock"}
+            )
+            
             order = Order(
                 order_id=f"order_{day}",
                 timestamp=date,
@@ -90,8 +119,10 @@ def mock_backtest_function(
                 side="buy" if day % 10 == 0 else "sell",
                 quantity=0.1,
                 price=50000.0 * (1 + daily_return[day]),
-                signal_source="ldc",
-                signal_strength=0.7,
+                order_type="market",
+                trade_signal=mock_trade_signal,
+                position_size_method="fixed_size",
+                risk_checks_passed={"position_limit": True, "exposure_limit": True},
                 metadata={}
             )
             orders.append(order)

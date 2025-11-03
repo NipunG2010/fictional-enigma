@@ -458,11 +458,11 @@ class TradeSignalGenerator:
             'confidence': trade_signal.confidence,
             'signal_source': trade_signal.signal_source,
             'reasoning': trade_signal.reasoning,
-            'signal_strength': trade_signal.processed_signal.strength,
-            'signal_direction': trade_signal.processed_signal.direction.value,
-            'raw_signals': trade_signal.processed_signal.raw_signals,
-            'regime_state': trade_signal.processed_signal.regime_state,
-            'regime_weights': trade_signal.processed_signal.regime_weights,
+            'signal_strength': self._get_processed_signal_attr(trade_signal, 'strength'),
+            'signal_direction': self._get_processed_signal_direction(trade_signal),
+            'raw_signals': self._get_processed_signal_attr(trade_signal, 'raw_signals', {}),
+            'regime_state': self._get_processed_signal_attr(trade_signal, 'regime_state'),
+            'regime_weights': self._get_processed_signal_attr(trade_signal, 'regime_weights'),
             'metadata': trade_signal.metadata,
             'filters_applied': self.config.filters,
             'event_type': 'trade_signal_generated'
@@ -471,6 +471,52 @@ class TradeSignalGenerator:
         self._audit_trail.append(audit_entry)
         logger.debug(f"Generated trade signal: {trade_signal.action.value} {trade_signal.symbol} "
                     f"(confidence: {trade_signal.confidence:.3f})")
+    
+    def _get_processed_signal_attr(self, trade_signal: TradeSignal, attr_name: str, default=None):
+        """
+        Safely retrieve an attribute from trade_signal.processed_signal.
+        
+        Args:
+            trade_signal: Trade signal that may or may not have processed_signal
+            attr_name: Name of the attribute to retrieve
+            default: Default value if attribute is not found
+            
+        Returns:
+            Attribute value if available, default otherwise
+        """
+        try:
+            processed_signal = getattr(trade_signal, 'processed_signal', None)
+            if processed_signal is None:
+                return default
+            
+            return getattr(processed_signal, attr_name, default)
+            
+        except (AttributeError, TypeError):
+            return default
+    
+    def _get_processed_signal_direction(self, trade_signal: TradeSignal):
+        """
+        Safely retrieve direction.value from trade_signal.processed_signal.
+        
+        Args:
+            trade_signal: Trade signal that may or may not have processed_signal.direction
+            
+        Returns:
+            Direction value if available, None otherwise
+        """
+        try:
+            processed_signal = getattr(trade_signal, 'processed_signal', None)
+            if processed_signal is None:
+                return None
+            
+            direction = getattr(processed_signal, 'direction', None)
+            if direction is None:
+                return None
+            
+            return getattr(direction, 'value', None)
+            
+        except (AttributeError, TypeError):
+            return None
     
     def _log_filtered_signal(self, signal: ProcessedSignal, filter_reason: str) -> None:
         """Log filtered signal to audit trail."""

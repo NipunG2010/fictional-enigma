@@ -345,6 +345,40 @@ class TradeGenerator:
         
         return position_size
     
+    def _detect_data_frequency_minutes(self, market_data: pd.DataFrame) -> int:
+        """
+        Detect data frequency in minutes from timestamps.
+        
+        Args:
+            market_data: Market data DataFrame with timestamp column
+            
+        Returns:
+            Frequency in minutes, defaults to 5 if cannot detect
+        """
+        if len(market_data) < 2:
+            return 5  # Default to 5 minutes
+        
+        # Sort by timestamp and calculate differences
+        sorted_data = market_data.sort_values('timestamp')
+        time_diffs = sorted_data['timestamp'].diff().dropna()
+        
+        if len(time_diffs) == 0:
+            return 5
+        
+        # Get the most common time difference
+        mode_diff = time_diffs.mode()
+        if len(mode_diff) == 0:
+            return 5
+        
+        # Convert to minutes
+        frequency_minutes = int(mode_diff.iloc[0].total_seconds() / 60)
+        
+        # Validate reasonable range
+        if frequency_minutes < 1 or frequency_minutes > 1440:
+            return 5
+        
+        return frequency_minutes
+
     def _calculate_volatility(
         self,
         symbol: str,
@@ -396,9 +430,15 @@ class TradeGenerator:
         # Calculate percentage volatility
         pct_volatility = atr / current_price if current_price > 0 else 0.0
         
-        # Annualize (assuming 5-minute bars, 288 bars per day, 365 days per year)
-        # Adjust this based on your data frequency
-        bars_per_year = 288 * 365
+        # Calculate annualization factor based on data frequency
+        if hasattr(self.config, 'data_frequency_minutes'):
+            frequency_minutes = self.config.data_frequency_minutes
+        else:
+            # Fallback: detect from data
+            frequency_minutes = self._detect_data_frequency_minutes(symbol_data)
+        
+        bars_per_day = 1440 / frequency_minutes  # 1440 minutes in a day
+        bars_per_year = bars_per_day * 365
         annualized_volatility = pct_volatility * np.sqrt(bars_per_year)
         
         # Cache the result
@@ -536,6 +576,30 @@ class TradeGenerator:
         
         return quantity
     
+    def _get_regime_state_safely(self, signal: TradeSignal) -> Optional[str]:
+        """
+        Safely retrieve regime_state from signal, handling missing attributes.
+        
+        Args:
+            signal: Trade signal that may or may not have processed_signal.regime_state
+            
+        Returns:
+            Regime state string if available, None otherwise
+        """
+        try:
+            # First check if processed_signal exists
+            processed_signal = getattr(signal, 'processed_signal', None)
+            if processed_signal is None:
+                return None
+            
+            # Then check if regime_state exists on processed_signal
+            regime_state = getattr(processed_signal, 'regime_state', None)
+            return regime_state
+            
+        except (AttributeError, TypeError):
+            # Handle any unexpected attribute access issues
+            return None
+    
     def _create_order(
         self,
         signal: TradeSignal,
@@ -576,7 +640,7 @@ class TradeGenerator:
                 'trade_id': signal.trade_id,
                 'signal_confidence': signal.confidence,
                 'signal_source': signal.signal_source,
-                'regime_state': signal.processed_signal.regime_state,
+                'regime_state': self._get_regime_state_safely(signal),
                 'notional_value': quantity * price
             }
         )

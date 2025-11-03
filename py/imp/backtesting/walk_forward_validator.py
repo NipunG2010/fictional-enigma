@@ -342,6 +342,7 @@ class WalkForwardValidator:
         logger.info(f"Starting walk-forward validation with {len(self.windows)} windows")
         
         baseline_performance = None
+        previous_test_metrics = None  # Track most recent completed window's test metrics
         retrain_windows = []
         
         for window in self.windows:
@@ -350,7 +351,7 @@ class WalkForwardValidator:
             # Check if retraining is needed
             if retrain_func and (window.window_id == 0 or 
                                 (baseline_performance and 
-                                 self.check_retraining_needed(window.test_metrics or baseline_performance, 
+                                 self.check_retraining_needed(previous_test_metrics or baseline_performance, 
                                                               baseline_performance))):
                 logger.info(f"Retraining model for window {window.window_id}")
                 try:
@@ -401,6 +402,9 @@ class WalkForwardValidator:
                 # Update baseline if this is the first window or after retraining
                 if baseline_performance is None or window.retrained:
                     baseline_performance = window.test_metrics
+                
+                # Update previous_test_metrics for next window's retrain decision
+                previous_test_metrics = window.test_metrics
                 
             except Exception as e:
                 logger.error(f"Testing backtest failed for window {window.window_id}: {e}")

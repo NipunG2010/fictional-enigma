@@ -147,6 +147,12 @@ class PositionSizingConfig(BaseModel):
         ge=0.1,
         le=3.0
     )
+    data_frequency_minutes: int = Field(
+        5,
+        description="Data frequency in minutes for annualization calculations",
+        ge=1,
+        le=1440
+    )
     
     @validator('fixed_size')
     def validate_fixed_size(cls, v, values):

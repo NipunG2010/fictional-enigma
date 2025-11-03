@@ -381,6 +381,40 @@ class CostModel:
         
         return volume
     
+    def _detect_data_frequency_minutes(self, market_data: pd.DataFrame) -> int:
+        """
+        Detect data frequency in minutes from timestamps.
+        
+        Args:
+            market_data: Market data DataFrame with timestamp column
+            
+        Returns:
+            Frequency in minutes, defaults to 5 if cannot detect
+        """
+        if len(market_data) < 2:
+            return 5  # Default to 5 minutes
+        
+        # Sort by timestamp and calculate differences
+        sorted_data = market_data.sort_values('timestamp')
+        time_diffs = sorted_data['timestamp'].diff().dropna()
+        
+        if len(time_diffs) == 0:
+            return 5
+        
+        # Get the most common time difference
+        mode_diff = time_diffs.mode()
+        if len(mode_diff) == 0:
+            return 5
+        
+        # Convert to minutes
+        frequency_minutes = int(mode_diff.iloc[0].total_seconds() / 60)
+        
+        # Validate reasonable range
+        if frequency_minutes < 1 or frequency_minutes > 1440:
+            return 5
+        
+        return frequency_minutes
+
     def _calculate_volatility(
         self,
         symbol: str,
@@ -422,8 +456,10 @@ class CostModel:
         # Calculate volatility (standard deviation of returns)
         volatility = recent_data['returns'].std()
         
-        # Annualize (assuming 5-minute bars, 288 bars per day, 365 days per year)
-        bars_per_year = 288 * 365
+        # Calculate annualization factor based on data frequency
+        frequency_minutes = self._detect_data_frequency_minutes(symbol_data)
+        bars_per_day = 1440 / frequency_minutes  # 1440 minutes in a day
+        bars_per_year = bars_per_day * 365
         annualized_volatility = volatility * np.sqrt(bars_per_year)
         
         return annualized_volatility

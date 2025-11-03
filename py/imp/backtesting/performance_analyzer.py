@@ -140,6 +140,46 @@ class PerformanceAnalyzer:
         
         logger.info("Initialized PerformanceAnalyzer")
     
+    def _detect_data_frequency_minutes(self, snapshots: List[PortfolioSnapshot]) -> int:
+        """
+        Detect data frequency in minutes from portfolio snapshots.
+        
+        Args:
+            snapshots: List of portfolio snapshots
+            
+        Returns:
+            Frequency in minutes, defaults to 5 if cannot detect
+        """
+        if len(snapshots) < 2:
+            return 5  # Default to 5 minutes
+        
+        # Calculate time differences between snapshots
+        timestamps = [snapshot.timestamp for snapshot in snapshots]
+        timestamps.sort()
+        
+        time_diffs = []
+        for i in range(1, len(timestamps)):
+            diff = timestamps[i] - timestamps[i-1]
+            time_diffs.append(diff.total_seconds() / 60)  # Convert to minutes
+        
+        if not time_diffs:
+            return 5
+        
+        # Get the most common time difference (mode)
+        time_diffs_series = pd.Series(time_diffs)
+        mode_diff = time_diffs_series.mode()
+        
+        if len(mode_diff) == 0:
+            return 5
+        
+        frequency_minutes = int(mode_diff.iloc[0])
+        
+        # Validate reasonable range
+        if frequency_minutes < 1 or frequency_minutes > 1440:
+            return 5
+        
+        return frequency_minutes
+    
     def calculate_metrics(
         self,
         snapshots: List[PortfolioSnapshot],
@@ -170,7 +210,7 @@ class PerformanceAnalyzer:
         returns_metrics = self._calculate_returns(equity_curve, initial_capital)
         
         # Calculate risk metrics
-        risk_metrics = self._calculate_risk_metrics(equity_curve, returns_metrics)
+        risk_metrics = self._calculate_risk_metrics(equity_curve, returns_metrics, snapshots)
         
         # Calculate drawdown metrics
         drawdown_metrics = self._calculate_drawdown_metrics(equity_curve)
@@ -290,7 +330,8 @@ class PerformanceAnalyzer:
     def _calculate_risk_metrics(
         self,
         equity_curve: pd.DataFrame,
-        returns_metrics: Dict[str, float]
+        returns_metrics: Dict[str, float],
+        snapshots: Optional[List[PortfolioSnapshot]] = None
     ) -> Dict[str, float]:
         """
         Calculate risk-adjusted metrics.
@@ -313,9 +354,13 @@ class PerformanceAnalyzer:
         # Volatility
         volatility = period_returns.std()
         
-        # Annualize volatility (assuming 5-minute bars, 288 per day)
-        # Adjust based on your data frequency
-        periods_per_day = 288
+        # Calculate annualization factor based on data frequency
+        if snapshots:
+            frequency_minutes = self._detect_data_frequency_minutes(snapshots)
+        else:
+            frequency_minutes = 5  # Default fallback
+        
+        periods_per_day = 1440 / frequency_minutes  # 1440 minutes in a day
         periods_per_year = periods_per_day * 365
         annualized_volatility = volatility * np.sqrt(periods_per_year)
         
