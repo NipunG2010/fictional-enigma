@@ -392,11 +392,36 @@ class SlippageModelEngine:
             cache_time, cached_volume = self._volume_cache[cache_key]
             return cached_volume
         
-        # Filter market data
-        symbol_data = market_data[
-            (market_data['symbol'] == symbol) &
-            (market_data['timestamp'] == timestamp)
-        ]
+        # Filter market data - handle both column-based and index-based timestamps
+        if 'timestamp' in market_data.columns:
+            # Timestamp is a column
+            timestamp_mask = market_data['timestamp'] == timestamp
+        else:
+            # Timestamp is the index (could be single or multi-index)
+            if isinstance(market_data.index, pd.MultiIndex):
+                # Multi-index case - assume timestamp is one of the index levels
+                if 'timestamp' in market_data.index.names:
+                    timestamp_mask = market_data.index.get_level_values('timestamp') == timestamp
+                else:
+                    # Assume timestamp is the first level if not named
+                    timestamp_mask = market_data.index.get_level_values(0) == timestamp
+            else:
+                # Single index case
+                timestamp_mask = market_data.index == timestamp
+        
+        # Build symbol mask
+        if 'symbol' in market_data.columns:
+            symbol_mask = market_data['symbol'] == symbol
+        else:
+            # Symbol might be in multi-index
+            if isinstance(market_data.index, pd.MultiIndex) and 'symbol' in market_data.index.names:
+                symbol_mask = market_data.index.get_level_values('symbol') == symbol
+            else:
+                # If no symbol column/index, assume all data is for the requested symbol
+                symbol_mask = pd.Series(True, index=market_data.index)
+        
+        # Combine masks
+        symbol_data = market_data[symbol_mask & timestamp_mask]
         
         if len(symbol_data) == 0:
             logger.debug(f"No volume data found for {symbol} at {timestamp}")
@@ -423,8 +448,26 @@ class SlippageModelEngine:
             return 5  # Default to 5 minutes
         
         # Sort by timestamp and calculate differences
-        sorted_data = market_data.sort_values('timestamp')
-        time_diffs = sorted_data['timestamp'].diff().dropna()
+        if 'timestamp' in market_data.columns:
+            # Timestamp is a column
+            sorted_data = market_data.sort_values('timestamp')
+            time_diffs = sorted_data['timestamp'].diff().dropna()
+        else:
+            # Timestamp is the index
+            if isinstance(market_data.index, pd.MultiIndex):
+                # Multi-index case - assume timestamp is one of the index levels
+                if 'timestamp' in market_data.index.names:
+                    timestamps = market_data.index.get_level_values('timestamp')
+                else:
+                    # Assume timestamp is the first level if not named
+                    timestamps = market_data.index.get_level_values(0)
+            else:
+                # Single index case
+                timestamps = market_data.index
+            
+            # Sort timestamps and calculate differences
+            sorted_timestamps = pd.Series(timestamps).sort_values()
+            time_diffs = sorted_timestamps.diff().dropna()
         
         if len(time_diffs) == 0:
             return 5
@@ -470,16 +513,43 @@ class SlippageModelEngine:
             if (timestamp - cache_time).total_seconds() < 3600:
                 return cached_vol
         
-        # Filter market data for the symbol
-        symbol_data = market_data[market_data['symbol'] == symbol].copy()
+        # Filter market data for the symbol - handle both column-based and index-based data
+        if 'symbol' in market_data.columns:
+            symbol_data = market_data[market_data['symbol'] == symbol].copy()
+        else:
+            # Symbol might be in multi-index
+            if isinstance(market_data.index, pd.MultiIndex) and 'symbol' in market_data.index.names:
+                symbol_data = market_data[market_data.index.get_level_values('symbol') == symbol].copy()
+            else:
+                # If no symbol column/index, assume all data is for the requested symbol
+                symbol_data = market_data.copy()
         
         if len(symbol_data) < lookback:
             # Return typical volatility if insufficient data
             return 0.15  # 15% typical volatility
         
         # Sort by timestamp and get recent data
-        symbol_data = symbol_data.sort_values('timestamp')
-        recent_data = symbol_data[symbol_data['timestamp'] <= timestamp].tail(lookback)
+        if 'timestamp' in symbol_data.columns:
+            symbol_data = symbol_data.sort_values('timestamp')
+            recent_data = symbol_data[symbol_data['timestamp'] <= timestamp].tail(lookback)
+        else:
+            # Timestamp is the index
+            if isinstance(symbol_data.index, pd.MultiIndex):
+                # Multi-index case - assume timestamp is one of the index levels
+                if 'timestamp' in symbol_data.index.names:
+                    timestamp_values = symbol_data.index.get_level_values('timestamp')
+                else:
+                    # Assume timestamp is the first level if not named
+                    timestamp_values = symbol_data.index.get_level_values(0)
+                
+                # Sort by timestamp and filter
+                symbol_data = symbol_data.sort_index()
+                mask = timestamp_values <= timestamp
+                recent_data = symbol_data[mask].tail(lookback)
+            else:
+                # Single index case
+                symbol_data = symbol_data.sort_index()
+                recent_data = symbol_data[symbol_data.index <= timestamp].tail(lookback)
         
         if len(recent_data) < 2:
             return 0.15

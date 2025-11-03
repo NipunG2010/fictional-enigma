@@ -124,12 +124,14 @@ class TradeSignalGenerator:
             
         Requirements: 2.1, 2.3, 2.5
         """
+        # Update trading states with current positions first, regardless of whether we have signals
+        # Always call _update_trading_states, even for empty dict, to handle position closures
+        # Convert None to empty dict to ensure consistent behavior
+        positions = current_positions if current_positions is not None else {}
+        self._update_trading_states(positions)
+        
         if not processed_signals:
             return []
-        
-        # Update trading states with current positions
-        if current_positions:
-            self._update_trading_states(current_positions)
         
         trade_signals = []
         
@@ -170,10 +172,27 @@ class TradeSignalGenerator:
         return self._trading_states[symbol]
     
     def _update_trading_states(self, current_positions: Dict[str, float]) -> None:
-        """Update trading states with current positions."""
+        """
+        Update trading states with current positions.
+        
+        Handles both position updates and position closures for symbols that
+        disappear from the position snapshot.
+        """
+        # Get all currently tracked symbols
+        tracked_symbols = set(self._trading_states.keys())
+        current_symbols = set(current_positions.keys())
+        
+        # Update positions for symbols in the current snapshot
         for symbol, position in current_positions.items():
             state = self._get_trading_state(symbol)
             state.position = position
+        
+        # Zero out positions for symbols that were tracked but are missing from current snapshot
+        missing_symbols = tracked_symbols - current_symbols
+        for symbol in missing_symbols:
+            if symbol in self._trading_states:
+                self._trading_states[symbol].position = 0.0
+                logger.debug(f"Zeroed out position for missing symbol: {symbol}")
     
     def _passes_overtrading_filters(
         self,
