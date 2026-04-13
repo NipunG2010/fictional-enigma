@@ -15,7 +15,7 @@ Status labels are defined in [`definition-of-done.md`](definition-of-done.md).
 | HMM research package | Yes | Partial | Yes | Yes | **prototype** | `py/imp/hmm/{trainer.py,inference.py,weight_optimizer.py,artifact_management.py}`, notebooks, tests under `py/tests/` |
 | HMM service | Yes | Partial | Yes, in isolation | Yes | **prototype** | `py/hmm_service/app.py`, `py/hmm_service/routers/inference.py`, `py/hmm_service/core/*`, tests in `py/hmm_service/test_*.py` |
 | Signal fusion and emission | Yes | Partial | Partial | Yes | **partially integrated** | `rust/signal-fusion/src/{lib.rs,config.rs,hmm_client.rs,signal_pipeline.rs,signal_emitter.rs}`, tests under `rust/signal-fusion/tests/` |
-| Inference-engine runtime | Partial | No | No, as a full runtime | No meaningful runtime proof | **not implemented** | `rust/inference-engine/src/main.rs` still contains TODOs for config load, component init, server start, and signal loop |
+| Inference-engine runtime | Yes | Yes, across feature pipeline, LDC, HMM/fallback, fusion, and optional emission in batch mode | Yes, as an offline batch runtime | Yes, via deterministic smoke fixture/output validation | **partially integrated** | `rust/inference-engine/src/{main.rs,config.rs,runtime.rs,hmm.rs,schema.rs}`, `rust/inference-engine/fixtures/local-smoke.toml`, `docs/runtime-runbook.md` |
 | End-to-end test suite | Yes | No, core components replaced by mocks | Yes, as a scaffold | Yes, for scaffold behavior | **test scaffold** | `rust/end-to-end-tests/Cargo.toml` has disabled real deps, `rust/end-to-end-tests/src/harness.rs` defines mock `SignalPipeline` and mock `LDCEngine` |
 | Backtesting framework | Yes | Partial | Partial | Partial | **partially integrated** | `py/imp/backtesting/*.py`, open items in `.kiro/specs/backtesting-framework/tasks.md`, empty tracked file `py/test_backtest_engine_basic.py` |
 | Production hardening | Partial | No | No | No repo-wide proof | **not production-ready** | scattered metrics/config/deployment code exists, but no repo-wide evidence of integrated runtime readiness or operational validation |
@@ -35,7 +35,7 @@ There is real Python implementation for both training/research and serving infer
 The signal-fusion crate contains real library code for HMM integration, fusion, emission, validation, and metrics. The gap is at **repo-wide runtime integration**, not absence of implementation.
 
 ### Inference runtime
-The top-level runtime claim is the biggest mismatch the repo had before this reset. `rust/inference-engine` is currently a CLI plus startup skeleton, not a complete running service.
+`rust/inference-engine` now ships a real offline batch orchestrator. The remaining gap is not placeholder status anymore; it is the absence of a production-style always-on service plus broader repo-wide proof around every optional integration surface.
 
 ### End-to-end testing
 The end-to-end testing project is valuable infrastructure, but it is currently a **mock-based harness** rather than proof of real full-system integration.

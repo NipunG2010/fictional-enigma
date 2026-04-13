@@ -17,7 +17,7 @@ The repository is a hybrid system with:
 | Component | Primary paths | Current role |
 | --- | --- | --- |
 | Feature pipeline | `rust/feature-pipeline` | Implemented technical indicator and signal-prep library |
-| Inference entrypoint | `rust/inference-engine` | Feature CLI plus incomplete runtime stub |
+| Inference entrypoint | `rust/inference-engine` | Offline batch runtime orchestrator plus feature CLI |
 | LDC engine | `rust/ldc-engine` | Implemented LDC-focused library with extensive testing/perf utilities |
 | Signal fusion | `rust/signal-fusion` | Implemented fusion/emission library with HMM client and metrics |
 | End-to-end tests | `rust/end-to-end-tests` | Mock-heavy integration scaffold |
@@ -51,15 +51,15 @@ Today, the architecture is better described as a set of **substantial component 
 - backtesting modules in Python
 
 ### Weaker integration areas
-- repo-level runtime orchestration in `rust/inference-engine`
-- non-mock full-stack end-to-end testing
+- always-on/live runtime orchestration beyond the implemented offline batch path
+- non-mock full-stack end-to-end testing across the whole repository
 - production hardening claims across the whole repository
 
 ## Supported architecture statement
 
 A truthful one-paragraph description of the repo today is:
 
-> IMP is a hybrid Rust/Python repository with real implementations for feature generation, LDC, HMM research, HMM service endpoints, signal fusion, and backtesting components. The repository currently behaves more like a collection of substantial libraries and prototypes than a fully proven production runtime, because the main Rust orchestration path is still incomplete and the repo-wide end-to-end test harness still relies on mocks.
+> IMP is a hybrid Rust/Python repository with real implementations for feature generation, LDC, HMM research, HMM service endpoints, signal fusion, and backtesting components. The repository now includes a real Rust offline batch runtime in `rust/inference-engine`, but it should still be described as a partially integrated system rather than a fully proven production platform because the always-on service story and repo-wide non-mock E2E proof remain incomplete.
 
 ## Operational boundary
 

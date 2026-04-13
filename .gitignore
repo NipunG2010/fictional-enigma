@@ -88,3 +88,4 @@ notebooks/*.png
 rust/sample/*.parquet
 rust/partitioned_data/
 rust/ldc-engine/*.parquet
+rust/runtime_output/
