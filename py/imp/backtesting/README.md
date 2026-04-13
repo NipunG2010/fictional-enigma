@@ -2,6 +2,8 @@
 
 Comprehensive backtesting framework for validating the IMP trading system using historical data.
 
+> Current-state note: this package contains substantial framework code, but the repository does not yet treat backtesting as fully validated. See `../../../docs/implementation-status.md` for the current repo-wide status label.
+
 ## Overview
 
 The backtesting framework provides a complete solution for simulating trading performance with:

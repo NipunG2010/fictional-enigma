@@ -1,5 +1,7 @@
 # Backtesting Framework Requirements
 
+> **Current-state note:** The backtesting code under `py/imp/backtesting` is substantial, but this spec should still be read as target behavior rather than proof of fully validated completion. Dedicated testing and validation work remains incomplete.
+
 ## Introduction
 
 The backtesting framework provides comprehensive validation of the IMP trading system by simulating historical trading performance. It converts generated signals into trades, applies realistic transaction costs, and calculates performance metrics to validate system effectiveness before production deployment.

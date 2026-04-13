@@ -1,5 +1,7 @@
 # Backtesting Framework Implementation Plan
 
+> **Current-state note:** Checked boxes here mean code modules were created, not that the framework is fully validated end-to-end. Open testing items and placeholder test files still matter for repo-level status.
+
 - [x] 1. Set up backtesting package structure and dependencies
   - Create `py/imp/backtesting/` package directory with `__init__.py`
   - Add vectorbt, plotly, and yaml dependencies to `pyproject.toml`

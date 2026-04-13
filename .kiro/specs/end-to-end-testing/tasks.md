@@ -1,5 +1,7 @@
 # End-to-End Testing Implementation Plan
 
+> **Current-state note:** Checked boxes here reflect harness and scaffold work, not proof that the repository currently has real-component end-to-end validation. `rust/end-to-end-tests` still uses mock implementations in its harness and has some real dependencies commented out in `Cargo.toml`.
+
 ## Overview
 
 This implementation plan converts the end-to-end testing design into actionable coding tasks that build comprehensive integration tests for the IMP trading system. Each task focuses on specific test implementation that validates the complete signal pipeline, failure scenarios, and performance requirements.
