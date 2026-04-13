@@ -1,5 +1,7 @@
 # End-to-End Testing Requirements Document
 
+> **Current-state note:** This spec describes the target end-to-end testing behavior. The current implementation in `rust/end-to-end-tests` is a useful scaffold, but it is not yet a true non-mock full-system validation suite. Real dependencies are still partially disabled and core components are replaced by mocks in the harness.
+
 ## Introduction
 
 The End-to-End Testing feature implements comprehensive integration testing for the IMP trading system pipeline, focusing on complete signal generation flow validation and failure scenario testing to ensure system reliability.

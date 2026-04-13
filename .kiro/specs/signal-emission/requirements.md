@@ -1,5 +1,7 @@
 # Signal Emission Requirements Document
 
+> **Current-state note:** This spec describes the intended signal-emission capability of `rust/signal-fusion`. The crate contains substantial implementation, but this spec is **not** by itself proof of repo-wide runtime integration or production readiness. For canonical current-state language, see `docs/implementation-status.md` and `docs/runtime-truth.md`.
+
 ## Introduction
 
 The Signal Emission feature implements the final stage of the IMP trading system pipeline, responsible for publishing validated trading signals to a message bus (Redis/Kafka) and maintaining comprehensive audit logs. This system ensures reliable signal delivery to downstream trading systems while providing full traceability and compliance capabilities.

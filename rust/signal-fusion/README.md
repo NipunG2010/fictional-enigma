@@ -2,6 +2,8 @@
 
 A high-performance Rust crate for trading signal fusion and emission to message bus infrastructure (Redis Streams/Kafka) with comprehensive audit logging and monitoring.
 
+> Current-state note: this crate contains substantial implementation, but repo-wide runtime integration is still partial. See `../../docs/implementation-status.md` and `../../docs/runtime-truth.md` before making broader system claims.
+
 ## Quick Start
 
 ### Basic Usage

@@ -2,6 +2,8 @@
 
 Python research environment for HMM-based market regime detection and analysis.
 
+> Repo-wide implementation and runtime status are tracked in `../docs/implementation-status.md` and `../docs/runtime-truth.md`. This README covers the Python workspace and research workflows; it should not be read as a production-readiness statement for the whole repository.
+
 ## Overview
 
 The IMP Python Research Environment provides a comprehensive Jupyter-based platform for:
@@ -10,11 +12,11 @@ The IMP Python Research Environment provides a comprehensive Jupyter-based platf
 - **Regime Analysis**: Detect and analyze market regimes with advanced visualization
 - **Parameter Optimization**: Interactive hyperparameter tuning and model selection
 - **Data Integration**: Seamless integration with Rust LDC engine outputs
-- **Production Deployment**: Export research artifacts for production use
+- **Artifact Handoff**: Export research artifacts for downstream prototype/runtime consumers
 
 ## Quick Start
 
-### Automated Setup (Recommended)
+### Automated Setup (Helper Script)
 
 **Linux/macOS:**
 ```bash
@@ -54,53 +56,28 @@ python -m imp.utils.env_validator
 jupyter lab
 ```
 
-Then select the "IMP Research Environment" kernel when opening notebooks.
+Then select the "IMP Research Environment" kernel when opening notebooks in `../notebooks/`.
 
 ## Project Structure
 
 ```
-py/
-├── imp/                          # Main package
-│   ├── hmm/                      # HMM components
-│   │   ├── trainer.py           # Multi-library HMM training
-│   │   ├── inference.py         # HMM inference
-│   │   ├── artifact_management.py  # Experiment tracking
-│   │   └── regime_analysis.py   # Regime analysis tools
-│   ├── data/                     # Data processing
-│   │   ├── ldc_loader.py        # LDC signal loading
-│   │   ├── preprocessor.py      # Data preprocessing
-│   │   └── validator.py         # Data validation
-│   ├── visualization/            # Visualization tools
-│   │   └── regime_visualizer.py # Regime visualization
-│   ├── evaluation/               # Model evaluation
-│   │   └── evaluator.py         # Cross-validation and metrics
-│   ├── tuning/                   # Parameter optimization
-│   │   └── parameter_tuner.py   # Interactive tuning
-│   └── utils/                    # Utilities
-│       └── env_validator.py     # Environment validation
-├── notebooks/                    # Research notebooks
-│   ├── 01_data_exploration.ipynb
-│   ├── 02_hmm_training_comparison.ipynb
-│   ├── 03_regime_analysis.ipynb
-│   ├── 04_parameter_optimization.ipynb
-│   ├── 05_parameter_tuning_demo.ipynb
-│   └── utils/                   # Notebook utilities
-├── tests/                        # Test suite
-│   ├── test_hmm.py
-│   ├── test_research_framework.py
-│   ├── test_notebook_integration.py
-│   └── RESEARCH_TESTING_GUIDE.md
-├── examples/                     # Example scripts
-│   ├── regime_analysis_example.py
-│   ├── parameter_tuning_example.py
-│   └── artifact_management_example.py
-├── docs/                         # Documentation
-│   ├── DEVELOPMENT_SETUP.md     # Setup guide
-│   ├── DEVELOPMENT_WORKFLOW.md  # Workflow guide
-│   └── QUICK_REFERENCE.md       # Quick reference
-├── pyproject.toml               # Package configuration
-├── Makefile                     # Development commands
-└── setup_research_env.sh        # Setup script
+repo-root/
+├── notebooks/                    # Top-level research notebooks and notebook outputs
+├── py/
+│   ├── imp/                      # Research and backtesting package code
+│   │   ├── hmm/                  # HMM training, inference helpers, artifacts
+│   │   ├── backtesting/          # Backtesting framework modules
+│   │   ├── data/                 # Data loading and preprocessing
+│   │   ├── evaluation/           # Evaluation helpers
+│   │   ├── tuning/               # Parameter optimization tools
+│   │   ├── visualization/        # Visualization helpers
+│   │   └── utils/                # Environment and utility helpers
+│   ├── hmm_service/              # FastAPI HMM service prototype
+│   ├── tests/                    # Python test suite
+│   ├── pyproject.toml            # Package configuration
+│   ├── Makefile                  # Development commands
+│   └── setup_research_env.sh     # Helper setup script
+└── docs/                         # Repo-wide status and setup docs
 ```
 
 ## Features
@@ -387,7 +364,7 @@ See [pyproject.toml](pyproject.toml) for complete dependency list.
 
 ## License
 
-MIT License - see LICENSE file for details.
+Python package metadata currently declares MIT licensing, but the repository does not currently include a top-level `LICENSE` file.
 
 ## Support
 

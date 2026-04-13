@@ -2,6 +2,8 @@
 
 A comprehensive testing framework for the IMP trading system that validates the complete signal generation pipeline, tests failure scenarios, and ensures performance requirements are met.
 
+> Current-state note: the current harness is a mock-heavy scaffold. It is useful test infrastructure, but it is not yet a true non-mock full-system validation suite. See `../../docs/implementation-status.md` and `../../docs/runtime-truth.md` for canonical repo status.
+
 ## Features
 
 - **Complete Pipeline Testing**: Validates the entire signal flow from OHLCV data to final signal emission

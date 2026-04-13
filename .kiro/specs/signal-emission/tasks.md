@@ -1,5 +1,7 @@
 # Signal Emission Implementation Plan
 
+> **Current-state note:** Checked boxes in this file record implementation work completed inside the `signal-fusion` area. They do **not** automatically prove full repo-wide integration, non-mock end-to-end validation, or production readiness. Refer to `docs/implementation-status.md` for the canonical status label.
+
 ## Overview
 
 This implementation plan converts the signal emission design into actionable coding tasks that build incrementally on the existing signal-fusion crate. Each task focuses on specific code implementation that can be executed by a coding agent, building toward a complete signal emission system with Redis/Kafka integration and comprehensive audit logging.

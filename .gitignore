@@ -23,10 +23,16 @@ MANIFEST
 
 # Virtual environments
 venv/
+.venv/
 env/
 ENV/
 env.bak/
 venv.bak/
+
+# Environment files
+.env
+.env.*
+!.env.example
 
 # IDE
 .vscode/
@@ -36,7 +42,7 @@ venv.bak/
 *~
 
 # Jupyter Notebook
-.ipynb_checkpoints
+.ipynb_checkpoints/
 
 # pytest
 .pytest_cache/
@@ -62,3 +68,23 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Repository-specific generated artifacts
+# Historical tracked files remain until a dedicated cleanup removes or relocates them.
+hmm_integration_generated.toml
+validation_output/
+validation/validation_results.json
+test-results/
+test-artifacts/
+py/processed_data/
+py/temp_*/
+py/temp_configs/
+notebooks/processed_data/
+notebooks/fusion_weight_results/
+notebooks/model_comparison_results/
+notebooks/regime_analysis_results/
+notebooks/systematic_training_results/
+notebooks/*.png
+rust/sample/*.parquet
+rust/partitioned_data/
+rust/ldc-engine/*.parquet
