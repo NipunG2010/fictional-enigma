@@ -1,0 +1,42 @@
+[runtime]
+mode = "integration_hmm"
+symbol = "BTCUSDT"
+interval = "5m"
+
+[input]
+market_data = "../../sample/ohlcv.parquet"
+
+[output]
+canonical_jsonl = "../../runtime_output/integration-hmm.jsonl"
+summary_json = "../../runtime_output/integration-hmm.summary.json"
+feature_parquet = "../../runtime_output/integration-hmm.features.parquet"
+weight_cache_json = "../../runtime_output/integration-hmm.weights.json"
+overwrite = true
+
+[hmm]
+mode = "service_required"
+unavailable_behavior = "use_cache_then_fallback"
+service_url = "http://localhost:8000"
+timeout_ms = 1500
+retry_attempts = 2
+retry_delay_ms = 100
+cache_ttl_seconds = 300
+max_cache_entries = 512
+
+[hmm.fallback_weights]
+w_ldc = 0.45
+w_mr = 0.30
+w_tsmom = 0.25
+
+[fusion]
+threshold = 0.10
+cooldown_seconds = 0
+normalize_weights = true
+model_version = "integration-hmm-v1"
+
+[emission]
+enabled = false
+backend = "none"
+audit_directory = "../../runtime_output/audit"
+validation_max_signal_age_seconds = 31536000
+validation_max_future_seconds = 300

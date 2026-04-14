@@ -15,7 +15,7 @@ This inventory exists so placeholders, scaffolds, mocks, and example outputs are
 
 | Path | Classification | Why it is called out | Current handling |
 | --- | --- | --- | --- |
-| `rust/inference-engine/src/main.rs` | **incomplete** | Contains TODOs for config loading, component init, server startup, and signal loop; only the feature CLI path is concrete | Treat as runtime stub, not as a finished service |
+| `rust/inference-engine/fixtures/local-smoke.expected.jsonl` and `.summary.json` | **example output** | These are canonical smoke fixtures for deterministic validation, not proof of production readiness by themselves | Treat as runtime fixtures paired with the real batch runtime and smoke command |
 | `rust/end-to-end-tests/src/harness.rs` | **test-only** | Defines local mock `SignalPipeline`, signals, and mock `LDCEngine` implementations | Treat as scaffold behavior only |
 | `rust/end-to-end-tests/Cargo.toml` | **blocked** | `polars`, `reqwest`, `ldc-engine`, and `signal-fusion` are commented out due to dependency/build issues | Treat as partial harness, not integrated E2E proof |
 | `py/imp/hmm/trainer.py` (`PomegranateTrainer`) | **prototype** | Explicitly uses a simplified placeholder implementation because of current pomegranate API changes | Keep labeled as prototype until replaced or validated |

@@ -1,0 +1,39 @@
+[runtime]
+mode = "fallback_only"
+symbol = "BTCUSDT"
+interval = "5m"
+
+[input]
+market_data = "../../sample/ohlcv.parquet"
+
+[output]
+canonical_jsonl = "../../runtime_output/fallback-only.jsonl"
+summary_json = "../../runtime_output/fallback-only.summary.json"
+feature_parquet = "../../runtime_output/fallback-only.features.parquet"
+weight_cache_json = "../../runtime_output/fallback-only.weights.json"
+overwrite = true
+
+[hmm]
+mode = "static_fallback"
+unavailable_behavior = "use_fallback"
+service_url = "http://localhost:8000"
+cache_ttl_seconds = 300
+max_cache_entries = 256
+
+[hmm.fallback_weights]
+w_ldc = 0.40
+w_mr = 0.35
+w_tsmom = 0.25
+
+[fusion]
+threshold = 0.10
+cooldown_seconds = 0
+normalize_weights = true
+model_version = "fallback-only-v1"
+
+[emission]
+enabled = false
+backend = "none"
+audit_directory = "../../runtime_output/audit"
+validation_max_signal_age_seconds = 31536000
+validation_max_future_seconds = 300
