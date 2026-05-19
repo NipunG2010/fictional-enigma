@@ -2,6 +2,8 @@
 
 FastAPI-based microservice for Hidden Markov Model inference in the IMP trading system.
 
+> Current-state note: this service should be treated as a runnable service prototype, not proof that the whole repository is production-ready. See `../../docs/implementation-status.md` and `../../docs/runtime-truth.md` for repo-wide truth.
+
 ## Overview
 
 The HMM Microservice provides REST endpoints for:

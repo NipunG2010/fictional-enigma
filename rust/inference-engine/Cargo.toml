@@ -21,6 +21,10 @@ clap.workspace = true
 chrono.workspace = true
 prometheus.workspace = true
 
+# Runtime config + hashing
+sha2 = "0.10"
+toml = "0.8"
+
 # Local dependencies
 feature-pipeline = { path = "../feature-pipeline" }
 ldc-engine = { path = "../ldc-engine" }
