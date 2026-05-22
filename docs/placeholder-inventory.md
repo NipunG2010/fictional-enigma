@@ -9,7 +9,7 @@ This inventory exists so placeholders, scaffolds, mocks, and example outputs are
 - **test-only**: exists to support tests, not production/runtime behavior
 - **blocked**: work is limited by a dependency or environment issue called out in the repo
 - **example output**: generated output kept for illustration, not validation proof
-- **empty residue**: tracked empty file with no current implementation value proven in-repo
+- **implemented**: was previously stub/placeholder but now has a real implementation
 
 ## High-impact placeholders and stubs
 
@@ -19,39 +19,59 @@ This inventory exists so placeholders, scaffolds, mocks, and example outputs are
 | `rust/end-to-end-tests/src/harness.rs` | **test-only** | Defines local mock `SignalPipeline`, signals, and mock `LDCEngine` implementations | Treat as scaffold behavior only |
 | `rust/end-to-end-tests/Cargo.toml` | **blocked** | `polars`, `reqwest`, `ldc-engine`, and `signal-fusion` are commented out due to dependency/build issues | Treat as partial harness, not integrated E2E proof |
 | `py/imp/hmm/trainer.py` (`PomegranateTrainer`) | **prototype** | Explicitly uses a simplified placeholder implementation because of current pomegranate API changes | Keep labeled as prototype until replaced or validated |
-| `validation_output/validation_report.json` | **example output** | Contains mostly null/zero metrics and should not be interpreted as proof of validated readiness | Keep only as example output unless replaced with real validated evidence |
+| `validation_output/validation_report.json` | **example output** | Contains mostly null/zero metrics — now gitignored so it won't be mistaken for validated readiness | Gitignored kept only as local example output |
 
-## Empty tracked files
+## Previously empty — now implemented
 
-These should not be mistaken for implemented work.
+The following files were empty stubs that have been filled with real implementations:
 
-| Path | Classification | Suggested interpretation |
+| Path | Status | Description |
 | --- | --- | --- |
-| `notebooks/NOTEBOOK_08_FIXES.md` | **empty residue** | incomplete notebook follow-up note |
-| `notebooks/TASK_6_FUSION_WEIGHT_OPTIMIZATION_SUMMARY.md` | **empty residue** | incomplete summary placeholder |
-| `notebooks/gen_nb.py` | **empty residue** | incomplete helper script placeholder |
-| `py/imp/data/IMPLEMENTATION_SUMMARY.md` | **empty residue** | incomplete summary placeholder |
-| `py/imp/tuning/TASK_11_IMPLEMENTATION_SUMMARY.md` | **empty residue** | incomplete summary placeholder |
-| `py/scripts/verify_task7_notebook.py` | **empty residue** | incomplete verification script |
-| `py/test_backtest_engine_basic.py` | **empty residue** | missing backtesting test implementation |
-| `py/tests/TASK_9_IMPLEMENTATION_SUMMARY.md` | **empty residue** | incomplete summary placeholder |
-| `py/tests/test_task3_minio_download_listing.py` | **empty residue** | incomplete test placeholder |
-| `py/tests/test_task4_tagging_deployment.py` | **empty residue** | incomplete test placeholder |
-| `rust/ldc-engine/examples/csv_data_test.rs` | **empty residue** | incomplete example placeholder |
-| `rust/ldc-engine/examples/test_configurations.rs` | **empty residue** | incomplete example placeholder |
-| `rust/signal-fusion/tests/config_integration_tests.rs` | **empty residue** | incomplete test placeholder |
+| `py/test_backtest_engine_basic.py` | **implemented** | 32 comprehensive unit tests covering backtesting framework (config, signal processing, trade generation, portfolio state, cost/slippage models, performance analysis, walk-forward, engine integration) |
+| `py/tests/test_task3_minio_download_listing.py` | **implemented** | 21 tests covering MinIO artifact download and listing (versioned downloads, integrity validation, filtering, error handling) |
+| `py/tests/test_task4_tagging_deployment.py` | **implemented** | 16 tests covering artifact tagging and deployment (production validation, staging tags, deployment history, rollback, lineage) |
+| `py/tests/TASK_9_IMPLEMENTATION_SUMMARY.md` | **implemented** | Implementation summary for the P5 backtesting test framework |
 
-## Generated or example artifacts that need explicit labeling
+## New files added
 
-| Path or pattern | Classification | Why it matters |
-| --- | --- | --- |
-| `hmm_integration_generated.toml` | **example output** | generated config currently tracked without clear policy |
-| `notebooks/*_results/**` and `notebooks/processed_data/**` | **example output** | notebook outputs can look like validated artifacts if unlabeled |
-| `py/processed_data/**` | **example output** | generated research outputs should not be read as canonical data assets |
-| `py/temp_requirements_test/**`, `py/temp_test_output/**` | **empty residue** | temporary outputs should not stay in the normal repo surface |
-| `rust/sample/*.parquet` | **example output** | useful as sample fixtures only if explicitly treated that way |
-| `rust/partitioned_data/**` | **example output** | generated partition output, not source code |
-| `rust/ldc-engine/ldc_pipeline_results.parquet` | **example output** | generated result file currently tracked in crate root |
+| Path | Description |
+| --- | --- |
+| `LICENSE` | MIT license (matches pyproject.toml and Cargo.toml declarations) |
+| `rust/inference-engine/src/daemon.rs` | Daemon mode implementation: periodic pipeline execution, health check HTTP endpoint, graceful shutdown via SIGINT/SIGTERM |
+| `rust/inference-engine/fixtures/integration-test.toml` | Config fixture for non-mock integration test (fallback_only mode, 16 rows max) |
+| `py/tests/scripts/generate_backtest_fixtures.py` | Deterministic fixture generator for canonical backtest (signals + OHLCV parquet) |
+| `py/tests/backtest_fixtures/backtest_canonical.yaml` | YAML config for the canonical end-to-end backtest run |
+| `py/tests/backtest_fixtures/signals/signals.parquet` | Generated signal fixtures (2160 rows) |
+| `py/tests/backtest_fixtures/market_data/market_ohlcv.parquet` | Generated OHLCV fixtures (2160 rows) |
+
+## Removed empty tracked files
+
+The following empty/stub files were removed from git tracking and deleted from disk:
+
+- `notebooks/NOTEBOOK_08_FIXES.md` — empty notebook follow-up note
+- `notebooks/TASK_6_FUSION_WEIGHT_OPTIMIZATION_SUMMARY.md` — empty summary placeholder
+- `notebooks/gen_nb.py` — empty helper script placeholder
+- `py/imp/data/IMPLEMENTATION_SUMMARY.md` — empty summary placeholder
+- `py/imp/tuning/TASK_11_IMPLEMENTATION_SUMMARY.md` — empty summary placeholder
+- `py/scripts/verify_task7_notebook.py` — empty verification script
+- `rust/ldc-engine/examples/csv_data_test.rs` — empty example placeholder
+- `rust/ldc-engine/examples/test_configurations.rs` — empty example placeholder
+- `rust/signal-fusion/tests/config_integration_tests.rs` — empty test placeholder
+
+## Generated or example artifacts — now gitignored
+
+The following artifacts are no longer tracked by git and are excluded via `.gitignore`:
+
+| Path or pattern | Why it matters |
+| --- | --- |
+| `hmm_integration_generated.toml` | Generated config that should not be version-controlled |
+| `notebooks/*_results/**` and `notebooks/processed_data/**` | Notebook outputs that can look like validated artifacts if tracked |
+| `py/processed_data/**` | Generated research outputs, not canonical data assets |
+| `py/temp_requirements_test/**`, `py/temp_test_output/**` | Temporary test outputs that should not stay in the repo |
+| `rust/sample/*.parquet` | Sample fixture data, not source code |
+| `rust/partitioned_data/**` | Generated partition output |
+| `rust/ldc-engine/ldc_pipeline_results.parquet` | Generated result file |
+| `validation_output/**` | Generated validation reports |
 
 ## Rule going forward
 

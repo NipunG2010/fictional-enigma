@@ -107,7 +107,7 @@ class TestHMMIntegration:
         
         # Verify constraints
         for state_weight in fusion_weights.state_weights:
-            assert set(state_weight.keys()) == {'s_LDC', 's_MR', 's_TSMOM'}
+            assert set(state_weight.keys()) == {'w_ldc', 'w_mr', 'w_tsmom'}
             assert np.isclose(sum(state_weight.values()), 1.0, atol=1e-6)
             assert all(w >= 0 for w in state_weight.values())
         

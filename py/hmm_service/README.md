@@ -24,7 +24,7 @@ The HMM Microservice provides REST endpoints for:
 2. **Set up environment:**
    ```bash
    cp .env.example .env
-   # Edit .env with your configuration
+   # Edit .env with your configuration (particularly MinIO credentials)
    ```
 
 3. **Start the service:**
@@ -46,6 +46,62 @@ The HMM Microservice provides REST endpoints for:
 2. **Access services:**
    - HMM Service: http://localhost:8000
    - MinIO Console: http://localhost:9001 (admin/admin123)
+
+## Canonical Service Startup
+
+The service follows a documented initialization sequence when it starts:
+
+1. **Logging configuration** — structured JSON logging is initialized based on `HMM_LOG_LEVEL`
+2. **Performance manager** — connection pooling and concurrency limits are configured
+3. **Cache manager** — inference result caching is initialized (`HMM_CACHE_SIZE`, `HMM_CACHE_TTL`)
+4. **Model loader** — connects to MinIO (via `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`), sets up circuit breaker and fallback model
+5. **Default model load** — loads the model specified by `HMM_DEFAULT_EXPERIMENT_ID` from MinIO, or falls back gracefully
+6. **Inference engine** — receives the loaded model, preprocesses parameters (precomputes inverse covariances and log-determinants for fast inference)
+7. **Ready** — service accepts requests at `/inference/*`, `/health/*`, `/models/*`
+
+```bash
+# Environment variables that control startup behavior
+HMM_DEFAULT_EXPERIMENT_ID=production_hmm     # Model to load on startup
+MINIO_ENDPOINT=localhost:9000                  # Where artifacts are stored
+MINIO_ACCESS_KEY=minioadmin                    # MinIO credentials
+MINIO_SECRET_KEY=minioadmin123
+HMM_MODEL_RELOAD_INTERVAL=300                  # Seconds between update checks
+```
+
+## Canonical Artifact-Loading Path
+
+Models are stored in MinIO and loaded through a documented pipeline:
+
+```mermaid
+graph LR
+    A[MinIO Bucket] -->|download_artifact| B[HMMArtifact]
+    A -->|download_artifact| C[FusionWeights]
+    B --> D[ArtifactValidator]
+    C --> D
+    D -->|validation passed| E[HMMInferenceEngine]
+    E -->|preprocessed params| F[Ready for inference]
+```
+
+**Step-by-step flow:**
+
+1. `MinIOArtifactStore` connects to MinIO and downloads the artifact for a given `experiment_id` and `version`
+2. `HMMArtifact(**artifact_data["hmm_artifact"])` reconstructs the Pydantic model with transition matrix, means, covariances, etc.
+3. `FusionWeights(**artifact_data["fusion_weights"])` reconstructs per-state fusion weights (optional)
+4. `ArtifactValidator.run_all_validations()` checks structural integrity (state count consistency, probability validity, covariance positive-definiteness)
+5. `HMMInferenceEngine.load_model()` preprocesses parameters:
+   - Converts transition matrix, means, covariances to numpy arrays
+   - Precomputes inverse covariances and log-determinants for O(n) likelihood computation
+   - Stores previous model as fallback
+6. Model is ready to serve inference requests
+
+The artifact interface (`HMMArtifact` fields: `version`, `n_states`, `transition_matrix`, `initial_probabilities`, `means`, `covariances`, `training_window_start/end`, `metadata`) is compatible with the Rust `signal-fusion` crate's `FusionWeights` struct, which expects flat `{w_ldc, w_mr, w_tsmom}` keys matching the service API response format.
+
+```bash
+# Example: loading a model via the API
+curl -X POST http://localhost:8000/models/reload \
+  -H "Content-Type: application/json" \
+  -d '{"experiment_id": "production_hmm", "version": "latest"}'
+```
 
 ## API Endpoints
 

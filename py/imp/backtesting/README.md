@@ -301,10 +301,53 @@ This implementation satisfies all requirements from the specification:
 
 ### Running Tests
 
+The framework has **69 unit tests** across 3 dedicated test files:
+
+**Backtesting core tests** (`py/test_backtest_engine_basic.py` — 32 tests):
 ```bash
 cd py
-pytest tests/test_backtesting.py -v
+python -m pytest test_backtest_engine_basic.py -v
 ```
+
+Covers configuration validation & serialization, signal processing, trade signal generation, trade generation, portfolio state management (positions, snapshots, statistics), cost model (commissions, spreads, minimums), slippage model (linear, square-root, combined), performance analyzer (metrics calculation, empty data), walk-forward validation (window setup, period parsing, serialization), and end-to-end engine orchestration with mocked data.
+
+**MinIO artifact management tests** (`py/tests/test_task3_minio_download_listing.py` — 21 tests):
+```bash
+cd py
+python -m pytest tests/test_task3_minio_download_listing.py -v
+```
+
+Covers artifact download by specific version, latest-version resolution, integrity validation (correct hash pass, wrong hash fail), error handling for non-existent artifacts, semver ordering, listing with experiment_id and tag filters, multiple-tag matching, production artifact retrieval, and empty-repository handling.
+
+**Tagging and deployment tests** (`py/tests/test_task4_tagging_deployment.py` — 16 tests):
+```bash
+cd py
+python -m pytest tests/test_task4_tagging_deployment.py -v
+```
+
+Covers staging tags, production tag validation (requires validated artifact), deploy-to-production/staging/development workflows, deployment history tracking and timestamps, fallback/rollback scenarios, multiple-version lineage, and cross-experiment lineage tracking.
+
+**Run all backtesting tests at once:**
+```bash
+cd py
+python -m pytest test_backtest_engine_basic.py tests/test_task3_minio_download_listing.py tests/test_task4_tagging_deployment.py -v
+```
+
+### Test Coverage Summary
+
+| Area | Tests | Coverage |
+| --- | --- | --- |
+| Configuration | 7 | Defaults, date validation, summary, YAML round-trip, crypto/forex factories, validation warnings |
+| Signal processing | 3 | Signal processor init, basic processing, direction enum |
+| Trade signals | 3 | Generator init, signal conversion, action enum |
+| Portfolio state | 5 | Init, single/multi positions, snapshots, statistics |
+| Cost model | 3 | Commission calc, minimums, spread costs |
+| Slippage model | 3 | Estimation, quantity scaling, model enum |
+| Performance analysis | 3 | Init, metrics calculation, empty data handling |
+| Walk-forward validation | 3 | Window setup, period parsing, serialization |
+| Engine orchestration | 2 | Initialization, full run with mocks |
+| MinIO download/listing | 21 | Versioned download, latest resolution, integrity validation, listing with filters, production artifact retrieval, error handling |
+| MinIO tagging/deployment | 16 | Staging/production tagging, deployment workflows, history tracking, rollback, lineage |
 
 ### Code Quality
 

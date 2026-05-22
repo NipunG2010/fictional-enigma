@@ -333,7 +333,7 @@ class WeightValidator:
         observations: np.ndarray,
         returns: np.ndarray,
         state_sequence: np.ndarray,
-        signal_names: List[str] = ['s_LDC', 's_MR', 's_TSMOM']
+        signal_names: List[str] = ['w_ldc', 'w_mr', 'w_tsmom']
     ) -> Dict[str, Any]:
         """Comprehensive validation of fusion weights.
         
@@ -780,7 +780,7 @@ class WalkForwardValidator:
         returns: np.ndarray,
         state_sequence: np.ndarray,
         n_states: int,
-        signal_names: List[str] = ['s_LDC', 's_MR', 's_TSMOM']
+        signal_names: List[str] = ['w_ldc', 'w_mr', 'w_tsmom']
     ) -> Dict[str, Any]:
         """Perform walk-forward validation for weight optimization.
         

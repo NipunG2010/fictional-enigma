@@ -1,0 +1,55 @@
+# Canonical end-to-end backtest configuration
+# Uses generated fixture data in backtest_fixtures/
+name: "canonical_e2e_test"
+description: "Canonical end-to-end backtest with real fixture data (30 days of 1h bars for BTCUSDT, ETHUSDT, SOLUSDT)"
+
+start_date: "2024-01-01"
+end_date: "2024-01-30"
+
+symbols:
+  - "BTCUSDT"
+  - "ETHUSDT"
+  - "SOLUSDT"
+
+initial_capital: 500000.0
+
+data_source:
+  signals_path: "tests/backtest_fixtures/signals"
+  market_data_path: "tests/backtest_fixtures/market_data"
+
+signal_processing:
+  thresholds:
+    ldc: 0.2
+    mr: 0.15
+    tsmom: 0.2
+  filters:
+    min_signal_strength: 0.1
+    max_trades_per_day: 20
+    cooldown_periods: 3
+  fusion_method: "hmm_weighted"
+
+position_sizing:
+  method: "percentage"
+  percentage: 0.05
+  max_position_size: 0.2
+  max_total_exposure: 1.0
+
+cost_model:
+  commission_rate: 0.001
+  min_commission: 1.0
+  asset_class: "crypto"
+  slippage_linear_impact: 0.0001
+  slippage_sqrt_impact: 0.001
+
+performance:
+  risk_free_rate: 0.02
+  regime_analysis: false
+  attribution_analysis: false
+
+walk_forward:
+  enabled: false
+
+output_path: "tests/backtest_fixtures/output"
+save_trades: false
+save_portfolio_state: false
+generate_report: false

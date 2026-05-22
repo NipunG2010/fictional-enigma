@@ -23,7 +23,7 @@ The repository is a hybrid system with:
 | End-to-end tests | `rust/end-to-end-tests` | Mock-heavy integration scaffold |
 | HMM research | `py/imp/hmm` | Implemented research/prototype package |
 | HMM service | `py/hmm_service` | FastAPI service prototype for inference and weights |
-| Backtesting | `py/imp/backtesting` | Substantial framework implementation with incomplete validation |
+| Backtesting | `py/imp/backtesting` | Substantial framework with canonical E2E validation (96 tests across 5 files) |
 | Local infra helpers | `docker-compose.yml` | MinIO + Redis only |
 
 ## Intended end-state data flow

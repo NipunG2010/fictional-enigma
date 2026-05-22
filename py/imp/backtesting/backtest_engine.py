@@ -136,11 +136,7 @@ class BacktestEngine:
         
         # Artifact loader (for HMM weights)
         self.artifact_loader = ArtifactLoader(
-            minio_endpoint=self.config.data_source.minio_endpoint,
-            access_key=self.config.data_source.minio_access_key,
-            secret_key=self.config.data_source.minio_secret_key,
-            bucket_name=self.config.data_source.minio_bucket,
-            local_cache_path=self.config.data_source.local_cache_path
+            config=self.config.data_source
         )
         
         # Signal processor
@@ -402,8 +398,7 @@ class BacktestEngine:
             # Generate trade signals
             trade_signals = self.trade_signal_generator.generate_trade_signals(
                 processed_signals=processed_signals,
-                current_positions=portfolio_state.position_quantities,
-                portfolio_value=portfolio_state.total_value
+                current_positions=portfolio_state.position_quantities
             )
             
             if not trade_signals:
@@ -520,8 +515,7 @@ class BacktestEngine:
                 # Generate trade signals
                 trade_signals = self.trade_signal_generator.generate_trade_signals(
                     processed_signals=processed_signals,
-                    current_positions=portfolio_state.position_quantities,
-                    portfolio_value=portfolio_state.total_value
+                    current_positions=portfolio_state.position_quantities
                 )
                 
                 all_trade_signals.extend(trade_signals)

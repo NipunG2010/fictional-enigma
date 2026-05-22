@@ -1,0 +1,57 @@
+[runtime]
+mode = "fallback_only"
+symbol = "BTCUSDT"
+interval = "5m"
+deterministic_output = true
+capture_wall_clock_timing = false
+max_rows = 16
+
+[input]
+market_data = "../../sample/ohlcv.parquet"
+
+[output]
+canonical_jsonl = "/tmp/imp-integration-test/integration-test-output.jsonl"
+summary_json = "/tmp/imp-integration-test/integration-test-summary.json"
+overwrite = true
+
+[features]
+window_size = 50
+rsi_period = 14
+ma_period = 20
+persist_feature_parquet = false
+
+[ldc]
+training_horizon_bars = 4
+min_training_samples = 8
+
+[hmm]
+mode = "static_fallback"
+unavailable_behavior = "use_fallback"
+service_url = "http://localhost:8000"
+timeout_ms = 1000
+retry_attempts = 1
+retry_delay_ms = 50
+cache_ttl_seconds = 300
+max_cache_entries = 128
+
+[hmm.fallback_weights]
+w_ldc = 0.50
+w_mr = 0.30
+w_tsmom = 0.20
+
+[fusion]
+threshold = 0.05
+cooldown_seconds = 0
+normalize_weights = true
+model_version = "integration-test-v1"
+
+[emission]
+enabled = false
+backend = "none"
+audit_directory = "/tmp/imp-integration-test/audit"
+validation_max_signal_age_seconds = 31536000
+validation_max_future_seconds = 300
+
+[failure]
+invalid_features = "skip_row"
+emission_failure = "continue"

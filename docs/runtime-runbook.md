@@ -96,9 +96,64 @@ The batch run also writes a summary JSON with row counts and the SHA-256 of the 
 
 Bundled configs live under `rust/inference-engine/fixtures/`.
 
-- `local-smoke.toml`
-- `integration-hmm.example.toml`
-- `fallback-only.example.toml`
+- `local-smoke.toml` — deterministic smoke fixture config
+- `integration-hmm.example.toml` — template for HMM service integration
+- `fallback-only.example.toml` — template for static-fallback-only runs
+- `integration-test.toml` — non-mock integration test config (fallback_only mode, 16 rows max)
+
+## Daemon (long-running) mode
+
+The inference engine now supports a **daemon mode** (`serve` subcommand) that runs the pipeline periodically and exposes a health check HTTP endpoint. This is the first step toward production-style always-on operation.
+
+### How it works
+
+- The pipeline runs in a loop at a configurable interval (default: 60 seconds).
+- A minimal health check HTTP server listens on a configurable port (default: 9090).
+- SIGINT (Ctrl+C) triggers graceful shutdown — the current pipeline run completes, then the process exits cleanly.
+
+### Health check endpoint
+
+```
+GET /health
+```
+
+Response:
+```json
+{"status":"ok"}
+```
+
+Status: **200 OK**
+
+### Run the daemon
+
+```bash
+cd rust
+
+# Default: port 9090, interval 60s
+cargo run -p inference-engine -- serve
+
+# Custom port and interval
+cargo run -p inference-engine -- serve --port 8080 --interval 120 \
+  --config inference-engine/fixtures/local-smoke.toml
+
+# Shorthand --serve flag (equivalent to `serve` subcommand)
+cargo run -p inference-engine -- --serve --serve-port 9090 --serve-interval 60
+```
+
+### What happens on shutdown
+
+1. The signal handler receives SIGINT (Ctrl+C) or SIGTERM.
+2. The daemon loop exits after the current pipeline run completes.
+3. The health check server shuts down.
+4. All resources are cleaned up (HMM cache saved, emitter flushed).
+
+### Daemon config
+
+The daemon mode reuses the same TOML config files as batch mode. Key settings:
+
+- `--port` / `--serve-port`: Health check HTTP endpoint port (default: 9090)
+- `--interval` / `--serve-interval`: Seconds between pipeline runs (default: 60)
+- `--config`: Path to the runtime configuration TOML (default: `inference-engine/fixtures/local-smoke.toml`)
 
 ## Commands
 
@@ -127,6 +182,22 @@ cargo run -p inference-engine -- run-runtime \
 cargo run -p inference-engine -- smoke \
   --config inference-engine/fixtures/local-smoke.toml
 ```
+
+### Run as a long-running daemon
+
+```bash
+cargo run -p inference-engine -- serve --port 9090 --interval 60 \
+  --config inference-engine/fixtures/local-smoke.toml
+```
+
+### Run the non-mock integration test
+
+```bash
+cd rust
+cargo test -p inference-engine -- --nocapture
+```
+
+This runs the real pipeline (feature pipeline → LDC → HMM/fallback → fusion → output) against sample data without mocked components. The integration tests live as inline `#[cfg(test)]` modules inside `main.rs`.
 
 ### Keep using the feature-only CLI
 

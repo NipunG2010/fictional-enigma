@@ -70,3 +70,18 @@ Thumbs.db
 *.temp
 
 node_modules/
+
+# Generated / example artifacts (untracked via git rm --cached)
+hmm_integration_generated.toml
+rust/sample/*.parquet
+rust/ldc-engine/ldc_pipeline_results.parquet
+rust/partitioned_data/
+validation_output/
+notebooks/*_results/
+notebooks/processed_data/
+py/processed_data/
+py/temp_requirements_test/
+py/temp_test_output/
+
+# Local test virtual environment
+.venv_test/

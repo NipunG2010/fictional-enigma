@@ -22,8 +22,8 @@ See [`placeholder-inventory.md`](placeholder-inventory.md).
 ### 3. Historical docs and specs overstated maturity
 This reset introduces a canonical status matrix and runtime-truth doc so the repo stops using unchecked task completion as proof of integrated readiness.
 
-### 4. Repository-level license file is absent
-Rust and Python package metadata declare MIT, but the repository root does not currently include a top-level `LICENSE` file.
+### 4. Repository-level license file
+A top-level `LICENSE` file (MIT) has been added, matching the declarations in `pyproject.toml` and `Cargo.toml`.
 
 ## Retention policy
 

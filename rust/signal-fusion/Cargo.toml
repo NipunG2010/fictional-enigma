@@ -25,7 +25,7 @@ toml = "0.8"
 
 # Signal emission dependencies
 redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
-rdkafka = { version = "0.36", features = ["tokio", "cmake-build", "ssl", "sasl"] }
+rdkafka = { version = "0.36", features = ["tokio", "ssl"] }
 async-trait = "0.1"
 rand = "0.8"
 uuid = { version = "1.0", features = ["v4", "serde"] }

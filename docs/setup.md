@@ -82,7 +82,50 @@ cargo run -p inference-engine -- smoke \
 
 This compares the generated runtime output against the bundled expected fixture.
 
-## Option 5: Local dependency services
+## Option 5: Rust daemon (long-running) mode
+
+The inference engine can run as a long-running daemon with a health check HTTP endpoint and periodic pipeline execution.
+
+```bash
+cd rust
+cargo run -p inference-engine -- serve --port 9090 --interval 60 \
+  --config inference-engine/fixtures/local-smoke.toml
+```
+
+What this gives you:
+- pipeline runs every 60 seconds on a loop
+- health check at `http://localhost:9090/health`
+- graceful shutdown on Ctrl+C / SIGTERM
+
+What this does not give you:
+- production-grade monitoring or alerting
+- config hot-reload without service restart
+
+### Run the non-mock integration test
+
+```bash
+cd rust
+cargo test -p inference-engine -- --nocapture
+```
+
+This validates the full pipeline path (feature pipeline → LDC → HMM/fallback → fusion → output) with real components against sample parquet data. Integration tests live as inline `#[cfg(test)]` modules inside `main.rs`.
+
+## Option 6: Backtesting canonical run
+
+The backtesting framework includes a canonical end-to-end test with real deterministic fixture data.
+
+```bash
+cd py
+python -m pytest tests/test_canonical_backtest.py -v
+```
+
+What this gives you:
+- full 6-step pipeline (data load → quality → simulation → metrics → report)
+- 3 symbols, 720 hourly bars each
+- fixture data in `py/tests/backtest_fixtures/`
+- 22 structural invariance tests
+
+## Option 7: Local dependency services
 
 ```bash
 docker compose up -d minio redis kafka

@@ -131,7 +131,7 @@ impl HmmWeightResolver {
 
                             Ok(ResolvedHmmWeights {
                                 weights: response.fusion_weights,
-                                model_version: response.model_version,
+                                model_version: response.model_version.clone(),
                                 metadata: HmmMetadata {
                                     source: source.clone(),
                                     model_version: Some(response.model_version.clone()),

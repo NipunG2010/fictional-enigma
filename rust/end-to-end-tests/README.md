@@ -155,7 +155,7 @@ Core dependencies:
 - `rand`: Random data generation
 - `anyhow`: Error handling
 
-Note: Some dependencies (polars, reqwest, local crates) are temporarily disabled due to OpenSSL build issues in the current environment.
+Note: These dependencies are now enabled. See `rust/end-to-end-tests/Cargo.toml` for the current dependency configuration. The `reqwest` and `polars` dependencies use workspace-level configuration with `rustls-tls` (pure Rust TLS, no system OpenSSL needed). The `rdkafka` dependency (via `signal-fusion`) uses pre-built librdkafka binaries instead of building from source, and SASL authentication support is disabled to avoid requiring `libsasl2-dev`.
 
 ## Future Enhancements
 

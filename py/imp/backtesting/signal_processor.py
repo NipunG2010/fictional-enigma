@@ -22,6 +22,16 @@ from .artifact_loader import ArtifactLoader
 logger = logging.getLogger(__name__)
 
 
+def _cast_regime_state(val: Any) -> Optional[int]:
+    """Safely cast a raw value to an optional integer regime state."""
+    if val is None:
+        return None
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None
+
+
 class SignalDirection(str, Enum):
     """Signal direction enumeration."""
     BUY = "buy"
@@ -117,6 +127,9 @@ class SignalProcessor:
         
         for _, row in signal_df.iterrows():
             try:
+                # Resolve timestamp from index or column
+                row_timestamp = row.name if isinstance(row.name, pd.Timestamp) else pd.to_datetime(row.get('timestamp', None))
+                
                 # Extract raw signals
                 raw_signals = {
                     'ldc': float(row.get('s_ldc', 0.0)),
@@ -125,7 +138,7 @@ class SignalProcessor:
                 }
                 
                 # Get regime information if available
-                regime_state = row.get('regime_state')
+                regime_state = _cast_regime_state(row.get('regime_state'))
                 regime_weights = self._get_regime_weights(regime_state)
                 
                 # Apply regime-aware fusion
@@ -136,7 +149,7 @@ class SignalProcessor:
                 
                 # Create processed signal
                 signal = ProcessedSignal(
-                    timestamp=pd.to_datetime(row['timestamp']),
+                    timestamp=row_timestamp,
                     symbol=symbol,
                     direction=direction,
                     strength=strength,
@@ -156,10 +169,10 @@ class SignalProcessor:
                     
                     # Update trade tracking for filtering
                     if direction != SignalDirection.HOLD:
-                        self._update_trade_tracking(symbol, signal.timestamp)
+                        self._update_trade_tracking(symbol, row_timestamp)
                 
             except Exception as e:
-                logger.error(f"Error processing signal for {symbol} at {row.get('timestamp')}: {e}")
+                logger.error(f"Error processing signal for {symbol} at {row_timestamp}: {e}")
                 continue
         
         logger.info(f"Processed {len(signal_df)} raw signals into {len(processed_signals)} trading signals for {symbol}")

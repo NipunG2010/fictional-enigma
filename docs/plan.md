@@ -17,7 +17,7 @@ The original plan in this repository mixed future-state architecture with presen
 | P2 | LDC engine | implemented as a library | complete adjacent runtime integration and reduce ambiguity between library success and runtime success |
 | P3 | HMM research and service | substantial prototype/service prototype | stabilize artifacts and supported inference path |
 | P4 | Runtime integration | incomplete | finish the real Rust runtime orchestration and remove current TODO/stub gaps |
-| P5 | Backtesting and validation | substantial framework, validation incomplete | complete dedicated testing and establish a canonical validated run path |
+| P5 | Backtesting and validation | substantial framework, canonical run complete (96 tests across 5 files) | stress-test with real market data and extend cross-language integration |
 | P6 | Production hardening | not achieved | only claim after real runtime, non-mock integration, observability, and operational evidence exist |
 
 ## Immediate P0 priorities
@@ -55,11 +55,11 @@ Exit criteria should include all of the following:
 - non-mock integration evidence exists.
 
 ### P5: Finish backtesting validation
-Exit criteria should include all of the following:
-- open backtesting test tasks are closed,
-- empty placeholder tests are removed or implemented,
-- one documented canonical backtest run exists,
-- validation outputs are clearly separated from example/demo outputs.
+Exit criteria:
+- [x] open backtesting test tasks are closed,
+- [x] empty placeholder tests are removed or implemented,
+- [x] one documented canonical backtest run exists (`py/tests/test_canonical_backtest.py`, 22 tests with real fixture data),
+- [x] validation outputs are clearly separated from example/demo outputs (fixtures in `py/tests/backtest_fixtures/`, generated artifacts gitignored).
 
 ### P6: Production hardening
 Do not mark this phase complete until the repository has:

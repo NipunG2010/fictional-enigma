@@ -365,9 +365,10 @@ class CostModel:
             return cached_volume
         
         # Filter market data for the symbol and timestamp
+        # timestamp is the DataFrame index after DataLoader processing
         symbol_data = market_data[
             (market_data['symbol'] == symbol) &
-            (market_data['timestamp'] == timestamp)
+            (market_data.index == timestamp)
         ]
         
         if len(symbol_data) == 0:
@@ -394,9 +395,9 @@ class CostModel:
         if len(market_data) < 2:
             return 5  # Default to 5 minutes
         
-        # Sort by timestamp and calculate differences
-        sorted_data = market_data.sort_values('timestamp')
-        time_diffs = sorted_data['timestamp'].diff().dropna()
+        # Sort by timestamp (index) and calculate differences
+        sorted_data = market_data.sort_index()
+        time_diffs = sorted_data.index.to_series().diff().dropna()
         
         if len(time_diffs) == 0:
             return 5
@@ -444,8 +445,8 @@ class CostModel:
         # Sort by timestamp and get recent data
         symbol_data = symbol_data.sort_values('timestamp')
         
-        # Get data up to the current timestamp
-        recent_data = symbol_data[symbol_data['timestamp'] <= timestamp].tail(lookback)
+        # Get data up to the current timestamp (index after DataLoader processing)
+        recent_data = symbol_data[symbol_data.index <= timestamp].tail(lookback)
         
         if len(recent_data) < 2:
             return 0.15

@@ -1,4 +1,5 @@
 mod config;
+mod daemon;
 mod hmm;
 mod runtime;
 mod schema;
@@ -9,10 +10,12 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use config::RuntimeConfig;
+use daemon::DaemonConfig;
 use feature_pipeline::FeaturePipeline;
 use polars::prelude::*;
 use runtime::InferenceRuntime;
 use tracing::{info, Level};
+use std::time::Duration;
 
 const DEFAULT_RUNTIME_CONFIG: &str = "inference-engine/fixtures/local-smoke.toml";
 
@@ -27,12 +30,40 @@ struct Args {
     #[arg(short, long, default_value = "info")]
     log_level: String,
 
+    /// Shortcut flag to run in daemon (serve) mode. Equivalent to `serve` subcommand.
+    #[arg(long)]
+    serve: bool,
+
+    /// Port for the health check HTTP endpoint (used with --serve).
+    #[arg(long, default_value_t = 9090)]
+    serve_port: u16,
+
+    /// Interval in seconds between pipeline runs (used with --serve).
+    #[arg(long, default_value_t = 60u64)]
+    serve_interval: u64,
+
     #[command(subcommand)]
     command: Option<Command>,
 }
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Run the inference engine as a long-running daemon with periodic pipeline
+    /// execution and a health check HTTP endpoint.
+    Serve {
+        /// Port for the health check HTTP server.
+        #[arg(long, default_value_t = 9090)]
+        port: u16,
+
+        /// Interval in seconds between successive pipeline runs.
+        #[arg(long, default_value_t = 60u64)]
+        interval: u64,
+
+        /// Path to the runtime configuration file.
+        #[arg(short, long, default_value = DEFAULT_RUNTIME_CONFIG)]
+        config: String,
+    },
+
     /// Compute features from an OHLCV parquet file and write them to parquet.
     ComputeFeatures {
         #[arg(short, long, default_value = "sample/ohlcv.parquet")]
@@ -67,7 +98,26 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     init_tracing(&args.log_level)?;
 
-    match args.command.unwrap_or(Command::RunRuntime) {
+    // When --serve is passed as a top-level flag (legacy), treat it as Serve subcommand.
+    let effective_command = if args.serve {
+        Some(Command::Serve {
+            port: args.serve_port,
+            interval: args.serve_interval,
+            config: args.config.clone(),
+        })
+    } else {
+        args.command
+    };
+
+    match effective_command.unwrap_or(Command::RunRuntime) {
+        Command::Serve { port, interval, config } => {
+            let daemon_config = DaemonConfig {
+                port,
+                interval: Duration::from_secs(interval),
+            };
+            daemon::run_daemon(PathBuf::from(&config), daemon_config).await?;
+            Ok(())
+        }
         Command::ComputeFeatures {
             input,
             output,
@@ -86,6 +136,10 @@ async fn main() -> Result<()> {
             println!("  - local_smoke     : deterministic fixture-driven batch run with fallback weights");
             println!("  - integration_hmm : batch runtime with live HMM service integration and explicit fallback handling");
             println!("  - fallback_only   : batch runtime with deterministic static weights and no HMM service dependency");
+            println!("");
+            println!("Daemon commands:");
+            println!("  serve             : run as long-running daemon with periodic pipeline execution");
+            println!("                      and health check HTTP endpoint (default port 9090)");
             Ok(())
         }
     }
@@ -192,6 +246,105 @@ async fn run_smoke_command(config_path: &Path, output_override: Option<PathBuf>)
     );
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Integration test — runs the real pipeline against sample data (non-mock).
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use std::fs;
+
+    /// Path to the integration test config (resolved at compile time).
+    fn test_config_path() -> PathBuf {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        manifest_dir.join("fixtures/integration-test.toml")
+    }
+
+    /// Path for the temporary output directory.
+    fn test_output_dir() -> PathBuf {
+        let mut dir = std::env::temp_dir();
+        dir.push("imp-integration-test");
+        let _ = fs::create_dir_all(&dir);
+        dir
+    }
+
+    #[tokio::test]
+    async fn test_pipeline_bootstrap_and_run() {
+        let config_path = test_config_path();
+        assert!(
+            config_path.exists(),
+            "integration test config not found: {}",
+            config_path.display()
+        );
+
+        // Load config and verify basic structure
+        let config = RuntimeConfig::load(&config_path).unwrap();
+        assert_eq!(config.runtime.symbol, "BTCUSDT");
+        assert_eq!(config.runtime.max_rows, Some(16));
+
+        // Bootstrap and run the pipeline
+        let mut runtime = InferenceRuntime::bootstrap(config).await.unwrap();
+        let summary = runtime.run().await.unwrap();
+        runtime.shutdown().await.unwrap();
+
+        // Validate summary structure
+        assert!(summary.output_rows > 0, "pipeline must produce at least one output row");
+        assert!(
+            summary.fused_rows > 0 || summary.fallback_rows > 0,
+            "pipeline must fuse or fall back on at least one row"
+        );
+        assert!(
+            !summary.canonical_output_sha256.is_empty(),
+            "output sha256 must be present"
+        );
+        assert!(summary.first_timestamp.is_some(), "first_timestamp must be set");
+        assert!(summary.last_timestamp.is_some(), "last_timestamp must be set");
+        assert_eq!(summary.runtime_mode, config::RuntimeMode::FallbackOnly);
+
+        // Verify the output JSONL file exists and has content
+        let output_path = test_output_dir().join("integration-test-output.jsonl");
+        assert!(output_path.exists(), "output jsonl must exist");
+        let contents = fs::read_to_string(&output_path).unwrap();
+        assert!(!contents.is_empty(), "output jsonl must not be empty");
+
+        // Parse first line and verify schema
+        let first_line = contents.lines().next().unwrap();
+        let record: schema::RuntimeOutputRecord =
+            serde_json::from_str(first_line).expect("first output line must be valid JSON");
+        assert_eq!(record.schema_version, "imp.runtime.output.v1");
+        assert!(!record.audit.run_id.is_empty());
+        assert!(!record.audit.correlation_id.is_empty());
+
+        // Verify the summary file exists and matches
+        let summary_path = test_output_dir().join("integration-test-summary.json");
+        assert!(summary_path.exists(), "summary json must exist");
+        let loaded_summary: schema::RuntimeRunSummary =
+            serde_json::from_str(&fs::read_to_string(summary_path).unwrap()).unwrap();
+        assert_eq!(loaded_summary.output_rows, summary.output_rows);
+        assert_eq!(
+            loaded_summary.canonical_output_sha256,
+            summary.canonical_output_sha256
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pipeline_with_fallback_only_mode() {
+        let config_path = test_config_path();
+        let config = RuntimeConfig::load(&config_path).unwrap();
+
+        // In fallback_only mode, the HMM resolver should always use static weights
+        let mut runtime = InferenceRuntime::bootstrap(config).await.unwrap();
+        let summary = runtime.run().await.unwrap();
+        runtime.shutdown().await.unwrap();
+
+        // All fused rows use static fallback — no service calls
+        assert!(
+            summary.fallback_rows >= summary.fused_rows,
+            "all fused rows should be counted as fallback in fallback_only mode"
+        );
+    }
 }
 
 fn run_compute_features(

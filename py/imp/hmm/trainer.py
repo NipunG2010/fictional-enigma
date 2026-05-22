@@ -749,8 +749,8 @@ class HMMTrainer(EnhancedHMMTrainer):
             logger.info("Predicting state sequence...")
             state_sequence = self.model.predict(observations)
             
-            # Signal names
-            signal_names = ['s_LDC', 's_MR', 's_TSMOM']
+            # Signal names (must match keys expected by HMMInference)
+            signal_names = ['w_ldc', 'w_mr', 'w_tsmom']
             
             # Optimize weights for each state
             state_weights = []

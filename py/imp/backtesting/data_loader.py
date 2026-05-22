@@ -204,8 +204,8 @@ class DataLoader:
         Returns:
             Data quality report
         """
-        signal_df = signal_df or self._signal_data
-        market_df = market_df or self._market_data
+        signal_df = signal_df if signal_df is not None else self._signal_data
+        market_df = market_df if market_df is not None else self._market_data
         
         if signal_df is None and market_df is None:
             raise ValueError("No data available for validation. Load data first.")
