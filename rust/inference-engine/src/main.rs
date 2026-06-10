@@ -30,6 +30,11 @@ struct Args {
     #[arg(short, long, default_value = "info")]
     log_level: String,
 
+    /// Log output format.  "text" (default) is human-readable; "json" emits one JSON object per
+    /// line, suitable for structured log aggregators (Loki, Datadog, CloudWatch, etc.).
+    #[arg(long, default_value = "text")]
+    log_format: String,
+
     /// Shortcut flag to run in daemon (serve) mode. Equivalent to `serve` subcommand.
     #[arg(long)]
     serve: bool,
@@ -96,7 +101,7 @@ enum Command {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    init_tracing(&args.log_level)?;
+    init_tracing(&args.log_level, &args.log_format)?;
 
     // When --serve is passed as a top-level flag (legacy), treat it as Serve subcommand.
     let effective_command = if args.serve {
@@ -145,7 +150,7 @@ async fn main() -> Result<()> {
     }
 }
 
-fn init_tracing(level: &str) -> Result<()> {
+fn init_tracing(level: &str, format: &str) -> Result<()> {
     let log_level = match level {
         "trace" => Level::TRACE,
         "debug" => Level::DEBUG,
@@ -154,8 +159,11 @@ fn init_tracing(level: &str) -> Result<()> {
         "error" => Level::ERROR,
         _ => Level::INFO,
     };
-
-    tracing_subscriber::fmt().with_max_level(log_level).init();
+    if format == "json" {
+        tracing_subscriber::fmt().json().with_max_level(log_level).init();
+    } else {
+        tracing_subscriber::fmt().with_max_level(log_level).init();
+    }
     Ok(())
 }
 
@@ -344,6 +352,23 @@ mod integration_tests {
             summary.fallback_rows >= summary.fused_rows,
             "all fused rows should be counted as fallback in fallback_only mode"
         );
+    }
+}
+
+#[cfg(test)]
+mod log_format_tests {
+    use super::*;
+
+    #[test]
+    fn test_log_format_arg_defaults_to_text() {
+        let args = Args::try_parse_from(["inference-engine"]).unwrap();
+        assert_eq!(args.log_format, "text");
+    }
+
+    #[test]
+    fn test_log_format_arg_accepts_json() {
+        let args = Args::try_parse_from(["inference-engine", "--log-format", "json"]).unwrap();
+        assert_eq!(args.log_format, "json");
     }
 }
 
