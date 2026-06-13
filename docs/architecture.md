@@ -1,72 +1,171 @@
 # Architecture
 
-This document describes the repository architecture **as it exists today**, while also distinguishing the intended end-state from the currently implemented runtime.
+Describes the system as it exists today. For what is runnable vs. not, see [`status.md`](status.md).
 
-For current implementation truth, see:
-- [`implementation-status.md`](implementation-status.md)
-- [`runtime-truth.md`](runtime-truth.md)
+---
 
-## High-level shape
+## One-paragraph summary
 
-The repository is a hybrid system with:
-- **Rust** for feature computation, LDC logic, signal fusion, and runtime-oriented components
-- **Python** for HMM research, model/training workflows, a FastAPI inference service, and backtesting
+IMP is a hybrid Rust/Python repository with real implementations for feature generation, LDC, HMM research, HMM service endpoints, signal fusion, and backtesting. The repository ships a real Rust offline batch runtime and a daemon mode in `rust/inference-engine`, but is still a **partially integrated system** — the always-on service story and repo-wide non-mock E2E proof are incomplete.
 
-## Component map
+---
 
-| Component | Primary paths | Current role |
-| --- | --- | --- |
-| Feature pipeline | `rust/feature-pipeline` | Implemented technical indicator and signal-prep library |
-| Inference entrypoint | `rust/inference-engine` | Offline batch runtime orchestrator plus feature CLI |
-| LDC engine | `rust/ldc-engine` | Implemented LDC-focused library with extensive testing/perf utilities |
-| Signal fusion | `rust/signal-fusion` | Implemented fusion/emission library with HMM client and metrics |
-| End-to-end tests | `rust/end-to-end-tests` | Mock-heavy integration scaffold |
-| HMM research | `py/imp/hmm` | Implemented research/prototype package |
-| HMM service | `py/hmm_service` | FastAPI service prototype for inference and weights |
-| Backtesting | `py/imp/backtesting` | Substantial framework with canonical E2E validation (96 tests across 5 files) |
-| Local infra helpers | `docker-compose.yml` | MinIO + Redis only |
+## Intended data flow
 
-## Intended end-state data flow
-
-```text
+```
 OHLCV data
-  -> feature pipeline
-  -> LDC / MR / TSMOM components
-  -> HMM regime inference
-  -> signal fusion
-  -> signal emission
-  -> downstream consumers
+  → feature-pipeline       (technical indicators)
+  → LDC / MR / TSMOM       (three independent trading signals)
+  → HMM regime inference   (market regime → per-signal weights)
+  → signal fusion           (weighted combination → fused score + side)
+  → emission                (optional: Redis / Kafka)
+  → downstream consumers
 ```
 
-## Current implemented reality
+---
 
-Today, the architecture is better described as a set of **substantial component implementations** than as one fully proven runtime.
+## Rust workspace (`rust/`)
 
-### Stronger implemented areas
-- feature computation in Rust
-- LDC library code and testing infrastructure
-- HMM research/training code in Python
-- HMM inference service prototype in Python
-- signal fusion/emission library code in Rust
-- backtesting modules in Python
+Crates are defined in `rust/Cargo.toml` (workspace resolver v2).
 
-### Weaker integration areas
-- always-on/live runtime orchestration beyond the implemented offline batch path
-- non-mock full-stack end-to-end testing across the whole repository
-- production hardening claims across the whole repository
+### `inference-engine`
+The single CLI entrypoint and runtime orchestrator. All supported execution paths go through here.
 
-## Supported architecture statement
+**Subcommands:**
+- `run-runtime` — offline batch: reads OHLCV, runs full pipeline, writes canonical JSONL + summary JSON
+- `smoke` — deterministic fixture mode: runs batch and compares output byte-for-byte to expected fixtures
+- `serve` — daemon mode: runs pipeline on a configurable interval, exposes `GET /health`
+- `compute-features` — feature-only CLI: reads OHLCV parquet, writes features parquet
+- `describe-modes` — prints runtime mode descriptions
 
-A truthful one-paragraph description of the repo today is:
+**Source files:**
+- `src/main.rs` — CLI dispatch + inline `#[cfg(test)]` integration tests
+- `src/runtime.rs` — batch orchestration logic
+- `src/daemon.rs` — daemon/serve mode: loop + health check HTTP server + graceful shutdown
+- `src/config.rs` — TOML config loading and validation
+- `src/hmm.rs` — HMM client calls and fallback resolution
+- `src/schema.rs` — canonical output schema (JSONL record structure)
 
-> IMP is a hybrid Rust/Python repository with real implementations for feature generation, LDC, HMM research, HMM service endpoints, signal fusion, and backtesting components. The repository now includes a real Rust offline batch runtime in `rust/inference-engine`, but it should still be described as a partially integrated system rather than a fully proven production platform because the always-on service story and repo-wide non-mock E2E proof remain incomplete.
+**Config fixtures** (`fixtures/`):
+- `local-smoke.toml` — canonical local smoke config (paired with `.expected.jsonl` + `.expected.summary.json`)
+- `integration-test.toml` — non-mock integration test config (fallback_only, 16 rows max)
+- `integration-hmm.example.toml` — template for live HMM service integration
+- `fallback-only.example.toml` — template for static-weights-only runs
 
-## Operational boundary
+### `feature-pipeline`
+Technical indicator computation from OHLCV data: RSI, EMA, Bollinger Bands, ATR, momentum, mean-reversion prep. Partitioned parquet read/write helpers. Feature validation. This is the strongest fully runnable Rust path.
 
-Do not treat the following as currently guaranteed by the repo:
-- a complete always-on inference service,
-- fully validated end-to-end pipeline latency claims,
-- production message-bus deployment proof,
-- production availability/SLO claims.
+### `ldc-engine`
+Lorentzian Distance Classification library. Implements the LDC k-NN variant using Lorentzian (log-metric) distance. Substantial tests under `tests/`, performance utilities, and test helpers. Wired into the batch runtime as a signal source.
 
-Those remain part of the **target architecture**, not the **current implementation truth**.
+### `signal-fusion`
+Combines LDC/MR/TSMOM signals using HMM-derived weights into a single fused score. Also contains:
+- `hmm_client.rs` — HTTP client for the Python HMM service (`POST /inference/predict`)
+- `signal_emitter.rs` — Redis and Kafka emission backends
+- Prometheus metrics, circuit-breaker logic, validation
+
+### `end-to-end-tests`
+Mock-based integration harness. Real dependencies (`polars`, `reqwest`, `ldc-engine`, `signal-fusion`) are commented out in `Cargo.toml`. Do not treat passing tests here as proof of real E2E integration.
+
+### `training-data-cli`
+Utilities for preparing HMM training data.
+
+---
+
+## Python packages (`py/`)
+
+Installed as a single package (`imp-python`) via `py/pyproject.toml`. Extras: `dev`, `optimization`, `research`.
+
+### `py/imp/hmm/`
+HMM research and training core.
+- `trainer.py` — HMM training workflows (note: `PomegranateTrainer` is a prototype due to current API changes)
+- `inference.py` — regime inference logic
+- `weight_optimizer.py` — per-regime fusion weight optimization
+- `artifact_management.py` — `HMMArtifact` and `FusionWeights` Pydantic models + MinIO artifact store
+- `regime_analysis.py` — regime characterization and analysis utilities
+
+### `py/hmm_service/`
+FastAPI microservice. The Rust runtime's `integration_hmm` mode calls this service.
+
+**Startup sequence:**
+1. Logging configuration
+2. Performance manager (connection pooling, concurrency limits)
+3. Cache manager (inference result caching)
+4. Model loader (MinIO connection, fallback setup)
+5. Default model load from MinIO (or fallback)
+6. Inference engine initialization (precomputes inverse covariances, log-determinants)
+7. Ready to serve
+
+**Key endpoints:** `POST /inference/predict`, `GET /inference/fusion-weights`, `GET /inference/state-probabilities`, `GET /health`, `GET /docs`
+
+**HMM ↔ Rust contract:**
+- Request: `{observations: [s_ldc, s_mr, s_tsmom], timestamp, request_id}`
+- Response fields used by Rust: `state_probabilities`, `most_likely_state`, `confidence`, `fusion_weights`, `model_version`, `processing_time_ms`
+- Artifact interfaces (`HMMArtifact`, `FusionWeights`) are defined in Python and structurally mirrored in `rust/signal-fusion`
+
+### `py/imp/backtesting/`
+13-module backtesting framework covering: data loading, signal processing, trade generation, portfolio state, cost/slippage models, performance analysis, walk-forward validation, MinIO artifact management, tagging/deployment workflows. 96 tests across 5 files.
+
+### `py/imp/tuning/`, `py/imp/visualization/`
+Hyperparameter optimization (scikit-optimize) and research visualization utilities.
+
+### `notebooks/`
+Research notebooks at the repo root level (not under `py/`). Generated outputs are gitignored.
+
+---
+
+## Canonical output format (JSONL per row)
+
+Each processed OHLCV row produces one record:
+
+```
+ohlcv                          raw bar
+features                       computed technical indicators
+intermediate_signals
+  ldc / mr / tsmom             raw signal values
+  fusion_inputs                pre-fusion representation
+hmm
+  source                       "service" | "cache" | "fallback"
+  weights / probabilities      per-state weights and state probs
+  request metadata             request_id, model_version, timing
+fused_output
+  fused_score                  combined signal value
+  recommended_side             BUY | SELL | HOLD
+  actionable_side              after suppression logic
+  suppression_reason           why signal was suppressed (if any)
+  weights_used                 weights applied during fusion
+audit
+  run_id / correlation_id      trace identifiers
+  input_checksum               SHA-256 of OHLCV input
+  feature_checksum             SHA-256 of computed features
+emission
+  configured / attempted / succeeded / error
+timing
+versions
+```
+
+A batch run also writes a summary JSON with row counts and SHA-256 of the JSONL output.
+
+---
+
+## Runtime modes (configured via `[runtime].mode`)
+
+| Mode | Description |
+|---|---|
+| `offline_batch` | Primary mode. Reads OHLCV file, full pipeline, canonical JSONL + summary output. |
+| `local_smoke` | Deterministic fixture mode. Static fallback weights, no emission, byte-for-byte comparison to expected output. |
+| `integration_hmm` | Batch mode with live HMM service HTTP call. Falls back to cached/static weights when service is unavailable. |
+| `fallback_only` | No HMM service call. Uses configured static weights only. Useful for local dev and failure isolation. |
+
+## HMM fallback behavior (config-driven)
+
+When the HMM service is unavailable, behavior depends on `[hmm].on_failure`:
+- `use_cache_then_fallback` — use cached weights if available, otherwise static fallback
+- `use_fallback` — always use static fallback weights
+- `fail` — abort the run
+
+The chosen path is recorded in the output's `hmm.source` field.
+
+## Emission backends
+
+Configured via `[emission].backend`: `none` | `redis` | `kafka` | `both`. Emission failure behavior depends on `[failure].emission_failure`: `continue` | `fail_run`.

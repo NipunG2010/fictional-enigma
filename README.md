@@ -19,9 +19,7 @@ What is **not** true today:
 - The repository should **not** be described as production-ready, Phase 6 complete, or operationally hardened end-to-end.
 
 For the authoritative status view, start here:
-- [`docs/implementation-status.md`](docs/implementation-status.md)
-- [`docs/runtime-truth.md`](docs/runtime-truth.md)
-- [`docs/definition-of-done.md`](docs/definition-of-done.md)
+- [`docs/status.md`](docs/status.md)
 
 ## What works today
 
@@ -71,9 +69,8 @@ For the authoritative status view, start here:
 
 ## Getting started
 
-Use the setup guide and runtime runbook for the supported local paths:
-- [`docs/setup.md`](docs/setup.md)
-- [`docs/runtime-runbook.md`](docs/runtime-runbook.md)
+Use the runbook for all supported local paths:
+- [`docs/runbook.md`](docs/runbook.md)
 
 Key caveats before you start:
 - The documented baseline is a **real batch runtime**, not a production always-on deployment.
@@ -82,18 +79,11 @@ Key caveats before you start:
 
 ## Documentation map
 
-### Current-state documentation
-- [`docs/implementation-status.md`](docs/implementation-status.md) - canonical implementation matrix
-- [`docs/runtime-truth.md`](docs/runtime-truth.md) - what is runnable today, with caveats
-- [`docs/placeholder-inventory.md`](docs/placeholder-inventory.md) - stubs, placeholders, mocks, empty files, and example outputs
-- [`docs/repo-hygiene.md`](docs/repo-hygiene.md) - tracked artifact policy and cleanup baseline
-- [`docs/definition-of-done.md`](docs/definition-of-done.md) - shared status vocabulary
-
-### Supporting documentation
-- [`docs/architecture.md`](docs/architecture.md) - architecture as implemented vs intended
-- [`docs/runtime-runbook.md`](docs/runtime-runbook.md) - runtime modes, commands, outputs, infra, and failure handling
-- [`docs/plan.md`](docs/plan.md) - roadmap, explicitly separated from current-state claims
-- `docs/ldc-engine/` - LDC-specific documentation
+### Documentation
+- [`docs/status.md`](docs/status.md) - canonical implementation matrix, runtime truth, status vocabulary, stubs/mocks inventory
+- [`docs/architecture.md`](docs/architecture.md) - component map, data flow, output format, runtime modes
+- [`docs/runbook.md`](docs/runbook.md) - all supported commands, setup, failure modes
+- [`docs/roadmap.md`](docs/roadmap.md) - phase summary and remaining work
 
 ## Definition-of-done language
 
